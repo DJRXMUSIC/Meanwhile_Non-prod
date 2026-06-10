@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0B0F14;
+  --color-surface: #121821;
+  --color-surface2: #1A2230;
+  --color-fg: #E6EDF3;
+  --color-muted: #8B98A5;
+  --color-accent: #3FB68B;
+  --color-amber: #D4A437;
+  --color-red: #E5534B;
+}
+
+html, body {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes shimmer {
+  0% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.4; }
+}
+.shimmer { animation: shimmer 1.4s ease-in-out infinite; }
