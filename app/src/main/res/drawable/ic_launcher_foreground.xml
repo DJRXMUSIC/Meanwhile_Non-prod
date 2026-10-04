@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Droplet -->
+    <path
+        android:fillColor="@color/launcher_foreground"
+        android:pathData="M54,30C54,30 37,50 37,62A17,17 0,0 0,71 62C71,50 54,30 54,30Z" />
+    <!-- Pulse line through the droplet -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/launcher_background"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M41,63L48,63L51,56L56,70L59,63L67,63" />
+</vector>

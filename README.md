@@ -1,3 +1,18 @@
+# MeanwhileV4
+
+Personal Android app (Kotlin, Jetpack Compose) that recommends a factor-adjusted rapid-acting insulin
+dose, pre-bolus lead time and split-dose plan from live CGM, a learned factor profile and deterministic
+dose math. Danny reviews every recommendation; the app never doses anything itself.
+
+- Spec: [`docs/SPEC.md`](docs/SPEC.md) · Decisions: [`docs/DECISIONS.md`](docs/DECISIONS.md)
+- Setup & install: [`docs/INSTALL.md`](docs/INSTALL.md)
+- Build: `./gradlew -p domain test` (dose engine) · `./gradlew :app:assembleRelease` (app)
+
+> The section below documents the earlier **T1D Harness PWA** whose files still live at the repo
+> root (`src/`, `public/`, `netlify/`, `package.json`). It is not part of MeanwhileV4.
+
+---
+
 # T1D Harness
 
 Personal, single-user decision-support PWA for Type 1 diabetes management. Speak or type

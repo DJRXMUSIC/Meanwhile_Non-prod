@@ -6,3 +6,21 @@ dev-dist/
 .env.*
 *.local
 tsconfig.tsbuildinfo
+
+# --- MeanwhileV4 (Android) ---
+.gradle/
+.kotlin/
+build/
+**/build/
+local.properties
+captures/
+.idea/
+*.iml
+.externalNativeBuild/
+.cxx/
+*.jks
+*.keystore
+*.apk
+*.aab
+supabase/.temp/
+supabase/.branches/
