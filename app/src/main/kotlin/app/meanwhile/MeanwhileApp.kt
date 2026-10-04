@@ -10,6 +10,7 @@ class MeanwhileApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         Notifications.createChannels(this)
         container = AppContainer(this)
         container.start()

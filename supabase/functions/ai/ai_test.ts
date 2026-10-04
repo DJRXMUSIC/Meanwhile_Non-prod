@@ -3,7 +3,7 @@ import { Ajv } from "npm:ajv@8.20.0";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { decodeJsonFields, schemas } from "./schemas.ts";
 import { callGemini } from "./providers.ts";
-import { allowedUser, readJsonObject } from "./guard.ts";
+import { allowedUser, oldestUser, readJsonObject } from "./guard.ts";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
@@ -91,11 +91,24 @@ Deno.test("gemini: errors become ProviderError (so the other provider is tried)"
   }
 });
 
-Deno.test("allowlist fails closed", () => {
-  assertEquals(allowedUser("u1", undefined).ok, false);
-  assertEquals(allowedUser("u1", " , ").ok, false);
-  assertEquals(allowedUser("u1", "u2").ok, false);
-  assertEquals(allowedUser("u1", "u2, u1").ok, true);
+Deno.test("allowlist: explicit list wins; unset defers to the first-account check", () => {
+  assert("checkFirstUser" in allowedUser("u1", undefined));
+  assert("checkFirstUser" in allowedUser("u1", " , "));
+  const denied = allowedUser("u1", "u2");
+  assert("ok" in denied && denied.ok === false);
+  const granted = allowedUser("u1", "u2, u1");
+  assert("ok" in granted && granted.ok === true);
+});
+
+Deno.test("first-account rule: oldest wins, ambiguity fails closed", () => {
+  const u = (id: string, at: string) => ({ id, created_at: at });
+  assertEquals(oldestUser([]), null); // no accounts yet -> nobody
+  assertEquals(oldestUser([u("danny", "2026-10-04T10:00:00Z")]), "danny");
+  // An attacker signing up later is never the oldest.
+  assertEquals(oldestUser([u("attacker", "2026-10-05T00:00:00Z"), u("danny", "2026-10-04T10:00:00Z")]), "danny");
+  // A full page means the true oldest may be unseen: refuse rather than guess.
+  const many = Array.from({ length: 50 }, (_, i) => u("u$i", "2026-10-0" + ((i % 8) + 1)));
+  assertEquals(oldestUser(many), null);
 });
 
 Deno.test("request body guards", async () => {

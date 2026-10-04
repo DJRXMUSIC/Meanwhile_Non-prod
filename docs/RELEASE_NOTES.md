@@ -1,9 +1,18 @@
-## MeanwhileV4 1.1 — simpler main screen, color palettes
+## MeanwhileV4 1.2 — runs itself
 
 First complete build. Install: download the APK below → open → allow "install unknown apps" for your browser
 (or point Obtainium at this repo — see `docs/INSTALL.md`).
 
-### New in 1.1
+### New in 1.2
+- **Faster forever:** dose calculations no longer slow down as months of profile history accumulate.
+- **Self-healing:** a 15-minute watchdog restarts the CGM service if Android kills it and catches up
+  missed work — even with the app closed, even offline.
+- **Crashes report themselves** into your feedback log (private, on-device → your own Supabase).
+- **Setup shrank:** no more `ALLOWED_USER_IDS` step — your first account automatically owns the AI,
+  and CI locks sign-ups by itself after you create it. Each CI run's Summary page is a setup checklist.
+- **Setup → System status:** CGM / backup / network at a glance plus a **Test AI** button.
+
+### From 1.1
 - **Main screen stripped down** (spec §15): glucose, active factors, the input bar — and a single
   Settings button. **Tap the big glucose number for Stats**, tap the profile line for the Profile.
   The sync/AI chips only appear when something needs attention.

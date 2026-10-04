@@ -183,9 +183,8 @@ class NightlyJobs(
     /** The learn-cycle proposal for [date] that's still waiting for Danny, if any. */
     suspend fun pendingProposal(date: LocalDate): ProfileVersionEntity? {
         val id = learnResult(date)?.versionId ?: return null
-        val all = db.profileVersions().all()
-        if (all.any { it.supersedesId == id }) return null
-        return all.firstOrNull { it.id == id && it.status == ProfileStatus.PENDING }
+        if (db.profileVersions().supersededBy(id) != null) return null
+        return db.profileVersions().byId(id)?.takeIf { it.status == ProfileStatus.PENDING }
     }
 
     suspend fun morningSeen(date: LocalDate) = settings.marker(KEY_MORNING_SEEN) == date.toString()

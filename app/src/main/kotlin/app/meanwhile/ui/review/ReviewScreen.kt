@@ -36,7 +36,6 @@ import app.meanwhile.ui.common.ScreenScaffold
 import app.meanwhile.ui.common.SectionCard
 import app.meanwhile.ui.main.sourceLabel
 import app.meanwhile.ui.theme.LocalGlucoseColors
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
@@ -106,7 +105,7 @@ fun ReviewScreen(id: String, onBack: () -> Unit) {
     val c = LocalAppContainer.current
     val scope = rememberSafeScope()
     val version by produceState<ProfileVersionEntity?>(null, id) { value = c.profiles.byId(id) }
-    val decided by produceState(false, id) { value = c.profiles.versions.first().any { it.supersedesId == id } }
+    val decided by produceState(false, id) { value = c.db.profileVersions().supersededBy(id) != null }
     var message by remember { mutableStateOf<String?>(null) }
     var done by remember { mutableStateOf(false) }
 

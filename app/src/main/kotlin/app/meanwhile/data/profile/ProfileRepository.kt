@@ -11,7 +11,6 @@ import app.meanwhile.domain.profile.ProfileChange
 import app.meanwhile.domain.profile.ProfileDiff
 import app.meanwhile.domain.profile.ProfileJson
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -59,24 +58,28 @@ class ProfileRepository(
 ) {
     private val writeLock = Mutex()
 
-    val versions: Flow<List<ProfileVersionEntity>> = db.profileVersions().allFlow()
+    /** Newest versions for the history screen; older ones stay queryable by id / in exports. */
+    val versions: Flow<List<ProfileVersionEntity>> = db.profileVersions().recentFlow(200)
 
-    val current: Flow<ProfileState> = versions.map { pickCurrent(it) }
+    val current: Flow<ProfileState> = db.profileVersions().currentAppliedFlow().map { toState(it) }
 
-    suspend fun current(): ProfileState = pickCurrent(db.profileVersions().all())
+    suspend fun current(): ProfileState = toState(db.profileVersions().currentApplied())
+
+    /** The decoded profile is cached per version id — the dose path asks for it constantly. */
+    @Volatile
+    private var decoded: Pair<String, Profile>? = null
 
     /** Latest accepted/edited version wins (spec §8). */
-    private fun pickCurrent(all: List<ProfileVersionEntity>): ProfileState {
-        val v = all.filter { it.status in ProfileStatus.APPLIED }
-            .maxWithOrNull(compareBy<ProfileVersionEntity> { it.version }.thenBy { it.createdAt })
-        return ProfileState(v?.let { runCatching { it.decodedProfile() }.getOrNull() } ?: Profile(), v)
+    private fun toState(v: ProfileVersionEntity?): ProfileState {
+        if (v == null) return ProfileState(Profile(), null)
+        decoded?.let { (id, p) -> if (id == v.id) return ProfileState(p, v) }
+        val p = runCatching { v.decodedProfile() }.getOrNull() ?: Profile()
+        decoded = v.id to p
+        return ProfileState(p, v)
     }
 
     /** Pending proposals (learn cycle, AI refinements) that haven't been decided yet. */
-    fun pendingFlow(): Flow<List<ProfileVersionEntity>> = versions.map { all ->
-        val decided = all.mapNotNull { it.supersedesId }.toSet()
-        all.filter { it.status == ProfileStatus.PENDING && it.id !in decided }
-    }
+    fun pendingFlow(): Flow<List<ProfileVersionEntity>> = db.profileVersions().pendingUndecidedFlow()
 
     /**
      * Saves [newProfile] as a new version. Expired factor activations are pruned first. The diff is
@@ -132,9 +135,5 @@ class ProfileRepository(
         db.factorDefinitions().insertAll(rows)
     }
 
-    suspend fun latestVersion(): ProfileVersionEntity? = db.profileVersions().all().firstOrNull()
-
     suspend fun byId(id: String): ProfileVersionEntity? = db.profileVersions().byId(id)
-
-    suspend fun appliedVersions(): List<ProfileVersionEntity> = versions.first().filter { it.status in ProfileStatus.APPLIED }
 }

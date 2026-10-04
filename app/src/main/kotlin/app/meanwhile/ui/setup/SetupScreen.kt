@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +36,9 @@ import app.meanwhile.notify.Notifications
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.common.ScreenScaffold
 import app.meanwhile.ui.common.SectionCard
+import app.meanwhile.ui.common.rememberSafeScope
+import app.meanwhile.data.remote.AuthState
+import kotlinx.coroutines.launch
 import app.meanwhile.format.relativeTime
 
 /** What still needs granting for reliable background operation (spec §13.3). */
@@ -78,6 +82,13 @@ fun SetupScreen(onBack: () -> Unit) {
     // Permission dialogs pause/resume the activity, so rememberSetupState refreshes by itself.
     val state = rememberSetupState()
     val feed by c.cgmStatus.collectAsStateWithLifecycle()
+    val scope = rememberSafeScope()
+    val auth by c.auth.state.collectAsStateWithLifecycle()
+    val online by c.network.online.collectAsStateWithLifecycle()
+    val syncStatus by c.settings.syncStatus.collectAsStateWithLifecycle(initialValue = app.meanwhile.data.settings.SyncStatus())
+    val pending by c.db.sync().pendingCount().collectAsStateWithLifecycle(initialValue = 0)
+    val latestBg by c.cgm.latest.collectAsStateWithLifecycle(initialValue = null)
+    var aiTest by remember { mutableStateOf<String?>(null) }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
@@ -114,6 +125,41 @@ fun SetupScreen(onBack: () -> Unit) {
             state.microphone,
         ) { micLauncher.launch(Manifest.permission.RECORD_AUDIO) }
 
+        SectionCard("System status") {
+            val authState = auth
+            StatusRow("CGM reading", latestBg != null, latestBg?.let { "latest ${relativeTime(it.timestamp.toEpochMilli())}" } ?: "none yet — see xDrip+ below")
+            StatusRow(
+                "Cloud backup",
+                c.supabase != null && authState is AuthState.SignedIn,
+                when {
+                    c.supabase == null -> "not in this build (add SUPABASE_URL/KEY secrets)"
+                    authState !is AuthState.SignedIn -> "not signed in"
+                    syncStatus.failingSince != null -> "sync failing since ${relativeTime(syncStatus.failingSince!!)}"
+                    pending > 0 -> "$pending records waiting"
+                    syncStatus.lastSuccessAt != null -> "synced ${relativeTime(syncStatus.lastSuccessAt!!)}"
+                    else -> "signed in, first sync pending"
+                },
+            )
+            StatusRow("Network", online, if (online) "online" else "offline — dosing still works, AI and sync wait")
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(enabled = c.ai.reachable(), onClick = {
+                    aiTest = "Testing…"
+                    scope.launch {
+                        val payload = kotlinx.serialization.json.buildJsonObject {
+                            put("text", kotlinx.serialization.json.JsonPrimitive("ping"))
+                        }
+                        val out = c.ai.call("route", payload, null, "setup test", app.meanwhile.data.ai.AiClient.FAST_TIMEOUT_MS)
+                        aiTest = when (out) {
+                            is app.meanwhile.data.ai.AiOutcome.Ok -> "AI OK — ${out.provider} (${out.model}) in ${out.latencyMs} ms"
+                            is app.meanwhile.data.ai.AiOutcome.Failed -> "AI failed: ${out.reason}"
+                        }
+                    }
+                }) { Text("Test AI") }
+                aiTest?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+            if (!c.ai.reachable()) Text("AI test needs: build with Supabase keys, signed in, online.", style = MaterialTheme.typography.bodySmall)
+        }
+
         SectionCard("xDrip+ feed") {
             Text(
                 when (feed.webOk) {
@@ -131,6 +177,18 @@ fun SetupScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+    }
+}
+
+@Composable
+private fun StatusRow(label: String, ok: Boolean, detail: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            if (ok) "●" else "○",
+            color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+        )
+        Text(label, style = MaterialTheme.typography.titleSmall)
+        Text(detail, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
     }
 }
 

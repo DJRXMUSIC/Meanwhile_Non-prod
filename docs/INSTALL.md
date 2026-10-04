@@ -45,7 +45,9 @@ Updates: repeat steps 1–2 for a newer release and tap **Update** — or use Ob
 
 1. On the Pixel, install Obtainium from `https://github.com/ImranR98/Obtainium/releases/latest`
    (download the `app-arm64-v8a-release.apk`, install as above) or from F-Droid.
-2. Open Obtainium → **Add App** → App source URL: `https://github.com/DJRXMUSIC/Meanwhile_Non-prod` → **Add**.
+2. On the Pixel, tap this link to add Meanwhile in one step:
+   `https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https%3A%2F%2Fgithub.com%2FDJRXMUSIC%2FMeanwhile_Non-prod`
+   — or in Obtainium: **Add App** → App source URL: `https://github.com/DJRXMUSIC/Meanwhile_Non-prod` → **Add**.
 3. Obtainium checks for new Releases and offers one-tap updates.
 4. If you make the repo private, Obtainium needs a GitHub token: GitHub → your avatar → **Settings** →
    **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token** →
@@ -96,15 +98,14 @@ It should finish green; in Supabase, **Table Editor** now lists `cgm_readings`, 
 (If you'd rather not use the access token: Supabase **SQL Editor** → **New query** → paste the whole file
 `supabase/migrations/20261004000100_meanwhile_init.sql` → **Run**.)
 
-**e) Email sign-in settings**
-1. Supabase → **Authentication** → **Sign In / Providers** → **Email**: enabled. Turn **Confirm email**
-   off (simplest) — or leave it on and click the link Supabase emails you after creating the account.
-2. Re-run the **android** workflow (Actions → newest android run → **Re-run all jobs**) so the APK
+**e) Create your account — the rest is automatic**
+1. Re-run the **android** workflow (Actions → newest android run → **Re-run all jobs**) so the APK
    includes your Supabase URL/key, then install that release.
-3. Open the app → enter your email + a password → **Create account**.
-4. Then lock the door: Supabase → **Authentication** → **Sign In / Providers** → turn off
-   **Allow new users to sign up**. (The repo is public, so anyone can read the anon key from the APK;
-   with sign-ups off and row-level security, nobody else can create an account or read your data.)
+2. Open the app → enter your email + a password → **Create account**. No confirmation email — CI
+   already turned that off for you.
+3. That's it. On its next run, CI **disables new sign-ups automatically** (it checks that your
+   account exists first, so you can't be locked out). Every android/supabase run's **Summary** page
+   shows a setup checklist with what, if anything, is still missing.
 
 **Check it works:** in the app, **Settings → App note** → type something → **Save note**. With the phone in
 airplane mode it stays "1 pending"; turn data back on and within a minute it shows **Synced**, and the
@@ -144,14 +145,19 @@ the repo, the APK, logs or chat.
    |---|---|
    | `GEMINI_API_KEY` | Gemini key |
    | `ANTHROPIC_API_KEY` | Anthropic key |
-   | `ALLOWED_USER_IDS` | **required** — your user id: **Authentication** → **Users** → click your email → copy **UID**. Without it the function refuses every call (the repo is public, so this is what stops anyone else spending your keys). |
    | `GEMINI_FAST_MODEL` | `gemini-flash-latest` (optional: faster routing/estimates) |
+
+   You do **not** need `ALLOWED_USER_IDS` any more: the function automatically allows only the
+   project's **first account** (yours), and CI locks sign-ups so no later account can exist. If you
+   ever want to be explicit, set `ALLOWED_USER_IDS` to your user id — it's one tap in the app:
+   **Settings → Account → Copy**.
 
    Optional model overrides (defaults shown): `GEMINI_MODEL` = `gemini-pro-latest`,
    `CLAUDE_MODEL` = `claude-opus-5-5`, `CLAUDE_FAST_MODEL` (unset = same as `CLAUDE_MODEL`).
 4. Deploy the function: GitHub **Actions** → **supabase** → newest run → **Re-run all jobs** (uses the
    access token from §5). In Supabase → **Edge Functions** you should now see `ai`.
 5. In the app: **Settings → AI provider** — Gemini first (default), Claude first, Gemini only, Claude only.
+6. Check it works: **Settings → Open setup checklist → System status → Test AI**.
 
 **Fallback test:** temporarily delete the `GEMINI_API_KEY` secret (or change one character), send
 "pizza and a coffee" — it still works, via Claude; Settings → AI provider shows the last error, and

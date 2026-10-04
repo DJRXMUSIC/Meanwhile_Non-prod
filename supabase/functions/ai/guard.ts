@@ -4,15 +4,27 @@
 export const MAX_BODY_BYTES = 1_000_000;
 
 /**
- * Who may spend the AI keys. Fails closed: with ALLOWED_USER_IDS unset or empty nobody may, because
- * the repo is public, the anon key ships in the APK, and Supabase allows sign-ups by default.
+ * Who may spend the AI keys. ALLOWED_USER_IDS set → exactly those users. Unset → the caller must be
+ * the project's FIRST account (checked server-side via the service role): Danny creates his account
+ * before anyone else can even know the project exists, and CI disables sign-ups right after. A later
+ * sign-up is never the oldest account, so it is refused without any manual configuration.
  */
-export function allowedUser(userId: string, allowedIds: string | undefined): { ok: true } | { ok: false; error: string } {
+export function allowedUser(
+  userId: string,
+  allowedIds: string | undefined,
+): { ok: true } | { ok: false; error: string } | { checkFirstUser: true } {
   const allowed = (allowedIds ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (allowed.length === 0) {
-    return { ok: false, error: "ALLOWED_USER_IDS is not set on the ai function (docs/INSTALL.md §7)" };
-  }
+  if (allowed.length === 0) return { checkFirstUser: true };
   return allowed.includes(userId) ? { ok: true } : { ok: false, error: "user not allowed" };
+}
+
+/**
+ * The oldest account on the page, or null when it can't be decided safely (no users, or the page is
+ * full so the true oldest might be beyond it — fail closed and ask for ALLOWED_USER_IDS instead).
+ */
+export function oldestUser(users: Array<{ id: string; created_at: string }>, pageSize = 50): string | null {
+  if (users.length === 0 || users.length >= pageSize) return null;
+  return users.reduce((a, b) => (a.created_at <= b.created_at ? a : b)).id;
 }
 
 /** Reads a JSON object body of at most [maxBytes]; returns an error string instead of throwing. */

@@ -262,3 +262,25 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   empty report.
 - The bar-chart drawable stays in the repo though the top bar no longer uses it.
 
+## Reliability, speed & self-managing setup (1.2)
+- **Profile lookups are O(1) now.** The dose path read *every* profile version (each a full JSON blob)
+  on every calculation and every 30 s main-screen refresh — fine in week one, megabytes per lookup
+  after a year of nightly versions. Targeted LIMIT-1 queries + a per-version decode cache replace it;
+  the history screen lists the newest 200 (older stay in exports / by id).
+- **Self-healing background:** the 15-min WorkManager job (no network constraint — CGM is localhost)
+  restarts the CGM service if Android killed it and runs outcome tagging / missed 6 am checks, even
+  if the app isn't opened. Sync simply skips while offline.
+- **Private crash log:** an uncaught crash is written to a local file and becomes a `feedback` row
+  (context `crash`) on the next start — synced, exported, no third-party service.
+- **AI access is zero-config:** with `ALLOWED_USER_IDS` unset, the Edge Function allows only the
+  project's **oldest account**, verified server-side via the service role (cached; ambiguity — 50+
+  accounts — fails closed). CI auto-sets `mailer_autoconfirm` and **disables sign-ups once ≥ 1
+  account exists**, so the open-sign-up window is one build cycle at most. Residual risk accepted:
+  someone extracting the project URL from a public release APK and registering before Danny's very
+  first account; `ALLOWED_USER_IDS` remains the explicit override.
+- **Setup dashboard:** every android/supabase workflow run writes a Summary checklist (signing /
+  app keys / automation token, auth lock state). In-app, Setup → System status shows CGM, backup,
+  network and a one-tap **Test AI**; Settings → Account has a copy button for the user id.
+- The sync worker switched to `ExistingPeriodicWorkPolicy.UPDATE` so existing installs pick up the
+  constraint change.
+

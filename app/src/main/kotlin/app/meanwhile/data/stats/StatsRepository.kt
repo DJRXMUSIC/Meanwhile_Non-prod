@@ -65,8 +65,8 @@ class StatsRepository(private val db: AppDatabase) {
             )
             val calls = db.aiCalls().since(fromMs)
             val callById = calls.associateBy { it.id }
-            val decisions = db.profileVersions().all()
-                .filter { it.aiCallId != null && it.createdAt >= fromMs && it.status in setOf("accepted", "edited", "rejected") }
+            val decisions = db.profileVersions().aiLinkedSince(fromMs)
+                .filter { it.status in setOf("accepted", "edited", "rejected") }
                 .mapNotNull { v -> callById[v.aiCallId]?.let { AiDecisionRow(it.provider, it.model, v.status) } }
             val estimates = db.meals().between(fromMs, now.toEpochMilli()).filter { it.isEstimate }.mapNotNull { m ->
                 runCatching {

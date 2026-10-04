@@ -16,6 +16,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.material3.TextButton
 import app.meanwhile.ui.theme.Palettes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -83,6 +86,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 )
                 is AuthState.SignedIn -> {
                     Text("Signed in as ${a.email ?: a.userId}" + if (a.offline) " (offline — will reconnect)" else "")
+                    val clipboard = LocalClipboardManager.current
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("User id: ${a.userId.take(13)}…", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { clipboard.setText(AnnotatedString(a.userId)) }) { Text("Copy") }
+                    }
                     OutlinedButton(onClick = { scope.launch { c.auth.signOut() } }) { Text("Sign out") }
                 }
                 else -> {

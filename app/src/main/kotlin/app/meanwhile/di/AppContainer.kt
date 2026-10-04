@@ -1,6 +1,7 @@
 package app.meanwhile.di
 
 import android.app.Application
+import app.meanwhile.CrashLog
 import app.meanwhile.data.RecordFactory
 import app.meanwhile.data.cgm.CgmFeedStatus
 import app.meanwhile.data.cgm.CgmIntake
@@ -147,6 +148,8 @@ class AppContainer(val app: Application) {
     fun start() {
         CgmService.start(app)
         appScope.launch {
+            // Last run's crash (if any) becomes a feedback row: synced, exported, visible.
+            CrashLog.takePending(app)?.let { runCatching { addFeedback(it, "crash") } }
             rearmAlarms()
             scheduleDailyAlarms()
             housekeeping()

@@ -164,11 +164,31 @@ interface ProfileVersionDao : RecordDao<ProfileVersionEntity> {
     @Query("SELECT * FROM profile_versions WHERE recordedAt BETWEEN :from AND :to ORDER BY recordedAt")
     suspend fun between(from: Long, to: Long): List<ProfileVersionEntity>
 
-    @Query("SELECT * FROM profile_versions ORDER BY version DESC, createdAt DESC")
-    fun allFlow(): Flow<List<ProfileVersionEntity>>
+    @Query("SELECT * FROM profile_versions ORDER BY version DESC, createdAt DESC LIMIT :limit")
+    fun recentFlow(limit: Int): Flow<List<ProfileVersionEntity>>
 
     @Query("SELECT * FROM profile_versions ORDER BY version DESC, createdAt DESC")
     suspend fun all(): List<ProfileVersionEntity>
+
+    // The dose path reads the current profile constantly; these stay O(1) as versions accumulate
+    // (a year of learn cycles is thousands of rows, each holding a full profile JSON).
+    @Query("SELECT * FROM profile_versions WHERE status IN ('accepted', 'edited') ORDER BY version DESC, createdAt DESC LIMIT 1")
+    fun currentAppliedFlow(): Flow<ProfileVersionEntity?>
+
+    @Query("SELECT * FROM profile_versions WHERE status IN ('accepted', 'edited') ORDER BY version DESC, createdAt DESC LIMIT 1")
+    suspend fun currentApplied(): ProfileVersionEntity?
+
+    @Query(
+        "SELECT * FROM profile_versions WHERE status = 'pending' AND id NOT IN " +
+            "(SELECT supersedesId FROM profile_versions WHERE supersedesId IS NOT NULL) ORDER BY version DESC",
+    )
+    fun pendingUndecidedFlow(): Flow<List<ProfileVersionEntity>>
+
+    @Query("SELECT * FROM profile_versions WHERE supersedesId = :id LIMIT 1")
+    suspend fun supersededBy(id: String): ProfileVersionEntity?
+
+    @Query("SELECT * FROM profile_versions WHERE aiCallId IS NOT NULL AND createdAt >= :from")
+    suspend fun aiLinkedSince(from: Long): List<ProfileVersionEntity>
 
     @Query("SELECT COALESCE(MAX(version), 0) FROM profile_versions")
     suspend fun maxVersion(): Int
