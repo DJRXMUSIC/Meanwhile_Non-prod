@@ -61,6 +61,13 @@ private val SETTINGS = listOf(
         "split.firstFraction" to "First injection fraction", "split.secondAfterMin" to "Second after (min)",
     ),
     "Daily reset" to listOf("resetHour" to "Reset hour (0–23)"),
+    "Learning" to listOf(
+        "learning.rate" to "Step size (0–1 of the gap to the evidence)", "learning.minLessons" to "Lessons before a step",
+        "learning.minChangePct" to "Smallest step (%)", "learning.evaluateAfterLessons" to "Lessons before judging a change",
+        "learning.revertIfWorsePct" to "Revert when worse by (%)", "learning.severeLowMgDl" to "Severe low (immediate revert)",
+        "learning.lowMgDl" to "Low line for lessons", "learning.lookbackDays" to "Look back (days)",
+        "learning.aiMinNewLessons" to "New lessons before an extra AI review", "learning.aiMinHoursBetween" to "Hours between AI reviews",
+    ),
 )
 
 @Composable

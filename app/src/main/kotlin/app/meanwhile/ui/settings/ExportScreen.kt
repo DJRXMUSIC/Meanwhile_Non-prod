@@ -86,7 +86,13 @@ fun ExportScreen(onBack: () -> Unit) {
                     val zone = ZoneId.systemDefault()
                     val from = start.atStartOfDay(zone).toInstant().toEpochMilli()
                     val to = end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-                    runCatching { c.exporter.export(from, to) }
+                    runCatching {
+                        val extras = mapOf(
+                            "diagnostics.md" to c.diagnostics.report(),
+                            "app-log.txt" to app.meanwhile.log.AppLog.rawText(),
+                        )
+                        c.exporter.export(from, to, extras = extras)
+                    }
                         .onSuccess { result = it }
                         .onFailure { error = it.message }
                     busy = false

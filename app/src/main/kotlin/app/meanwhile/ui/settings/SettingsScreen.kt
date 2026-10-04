@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -72,8 +73,9 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 "Also on the main screen: tap the glucose number for stats, the profile line for the profile.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { onOpen(Routes.PROFILE) }) { Text("Profile & factors") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { onOpen(Routes.PROFILE) }) { Text("Profile") }
+                Button(onClick = { onOpen(Routes.LEARNING) }) { Text("Learning") }
                 Button(onClick = { onOpen(Routes.STATS) }) { Text("Stats") }
             }
         }
@@ -190,6 +192,35 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 }
                 Text(Palettes.byId(st.palette).label, style = MaterialTheme.typography.bodySmall)
             }
+        }
+
+        SectionCard("Diagnostics") {
+            val problems by produceState(0) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { c.diagnostics.problemCount() } }
+            Text(
+                if (problems == 0) "No warnings or errors in the last 24 h." else "$problems warnings/errors in the last 24 h.",
+                color = if (problems == 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+            )
+            Text(
+                "Something off? Copy the diagnostics report and paste it into Claude (or any AI coding assistant) — " +
+                    "it has the app version, device, health of every part, grouped errors with stack traces and the log. No keys or passwords.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val clipboard = LocalClipboardManager.current
+            var diagMessage by remember { mutableStateOf<String?>(null) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    scope.launch {
+                        clipboard.setText(AnnotatedString(c.diagnostics.report(tailLines = 150)))
+                        diagMessage = "Copied — paste it into your AI assistant"
+                    }
+                }) { Text("Copy for AI") }
+                OutlinedButton(onClick = {
+                    scope.launch { context.startActivity(c.diagnostics.shareIntent(c.diagnostics.writeReport())) }
+                }) { Text("Share") }
+                OutlinedButton(onClick = { onOpen(Routes.LOG) }) { Text("Log") }
+            }
+            diagMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         }
 
         SectionCard("Data") {

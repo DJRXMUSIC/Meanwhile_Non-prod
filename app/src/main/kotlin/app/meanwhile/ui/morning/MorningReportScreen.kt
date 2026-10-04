@@ -15,6 +15,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +71,8 @@ fun MorningReportScreen(onDone: () -> Unit) {
     var sleep by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
+    var learned by remember { mutableStateOf<List<app.meanwhile.data.db.LearningLogEntity>>(emptyList()) }
+    var openIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     val profileState by c.profiles.current.collectAsStateWithLifecycle(initialValue = ProfileState(Profile(), null))
 
     LaunchedEffect(reload) {
@@ -90,6 +94,9 @@ fun MorningReportScreen(onDone: () -> Unit) {
         }
         learn = c.nightly.learnResult(d)
         pending = c.nightly.pendingProposal(d)
+        // What learning changed on its own since the reset (auto-applied or reverted).
+        learned = c.learning.appliedSince(reset.minus(java.time.Duration.ofHours(24)))
+        openIds = c.learning.openChangeIds()
         overnight = c.nightly.overnightIfNeeded()
         sleep = c.profiles.current().profile.active
             .lastOrNull { it.factorId == "F8" && it.startedAt >= reset.toEpochMilli() }?.preset
@@ -164,8 +171,24 @@ fun MorningReportScreen(onDone: () -> Unit) {
                     Text(learn?.message ?: "", color = ai)
                     learn?.observations?.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
                     val p = pending
+                    if (learned.isNotEmpty()) {
+                        Text("Changed automatically — each one is judged on the next outcomes and reverted if they get worse:", style = MaterialTheme.typography.bodySmall)
+                        learned.forEach { e ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(e.summary.substringBefore(" — "), color = if (e.kind == "reverted") MaterialTheme.colorScheme.error else ai, modifier = Modifier.weight(1f))
+                                if (e.id in openIds) {
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            message = c.learning.undo(e.id)
+                                            openIds = c.learning.openChangeIds()
+                                        }
+                                    }) { Text("Undo") }
+                                }
+                            }
+                        }
+                    }
                     if (p == null) {
-                        Text(if (learn?.status == "no_changes") "No changes proposed." else "Already reviewed.")
+                        if (learned.isEmpty()) Text(if (learn?.status == "no_changes") "No changes proposed." else "Nothing waiting for review.")
                     } else {
                         val state = remember(p.id) { ReviewState(p.changes()) }
                         ChangeReviewList(state)

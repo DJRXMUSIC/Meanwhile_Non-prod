@@ -1,12 +1,12 @@
 package app.meanwhile.service
 
+import app.meanwhile.log.AppLog
 import android.app.Notification
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -34,7 +34,7 @@ import java.util.Locale
  */
 class CgmService : Service() {
     private val scope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("CgmService", "task failed", e) },
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> AppLog.e("CgmService", "task failed: ${e.message}", e) },
     )
     private var running = false
     private var staleNotified = false
@@ -48,6 +48,7 @@ class CgmService : Service() {
         )
         if (!running) {
             running = true
+            AppLog.i("CgmService", "started")
             run()
         }
         return START_STICKY
@@ -127,6 +128,7 @@ class CgmService : Service() {
     }
 
     override fun onDestroy() {
+        AppLog.w("CgmService", "stopped by the system (the watchdog restarts it within 15 min)")
         scope.cancel()
         running = false
         super.onDestroy()
@@ -138,7 +140,7 @@ class CgmService : Service() {
             try {
                 ContextCompat.startForegroundService(context, Intent(context, CgmService::class.java))
             } catch (e: Exception) {
-                Log.w("CgmService", "start refused: ${e.message}")
+                if (AppLog.throttle("cgm-start-refused", 30 * 60_000L)) AppLog.w("CgmService", "start refused by Android (will retry): ${e.message}")
             }
         }
     }

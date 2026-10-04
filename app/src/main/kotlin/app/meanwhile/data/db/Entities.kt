@@ -252,6 +252,28 @@ data class InputEntity(
     @Transient override val syncState: Int = SyncState.PENDING,
 ) : Record
 
+/**
+ * The learning journal (1.3): what the app learned, changed, kept and reverted, in order. Append-only
+ * like everything else — an `applied` change is closed by a later `kept` / `reverted` / `undone` row
+ * whose `supersedesId` points at it.
+ */
+@Serializable
+@Entity(tableName = "learning_log", indices = [Index("recordedAt"), Index("syncState"), Index("kind")])
+data class LearningLogEntity(
+    @PrimaryKey override val id: String,
+    override val userId: String? = null,
+    @Serializable(with = EpochMillisIso::class) override val createdAt: Long,
+    @Serializable(with = EpochMillisIso::class) override val recordedAt: Long,
+    override val supersedesId: String? = null,
+    /** lessons | ai_review | applied | proposed | kept | reverted | undone | error */
+    val kind: String,
+    val summary: String,
+    @Serializable(with = JsonText::class) val details: String = "{}",
+    val profileVersionId: String? = null,
+    val aiCallId: String? = null,
+    @Transient override val syncState: Int = SyncState.PENDING,
+) : Record
+
 /** Local-only queue of AI calls deferred while offline (spec §9.4). Not synced; rows are removed when done. */
 @Entity(tableName = "ai_queue")
 data class AiQueueEntity(

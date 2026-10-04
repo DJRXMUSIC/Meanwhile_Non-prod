@@ -26,6 +26,7 @@ object Notifications {
     const val ID_SYNC_FAILING = 3
     const val ID_MORNING_REPORT = 4
     const val ID_AI_REFINEMENT = 5
+    const val ID_LEARNING = 6
     /** Split reminders use ID_SPLIT_BASE + a per-proposal offset. */
     const val ID_SPLIT_BASE = 1000
 

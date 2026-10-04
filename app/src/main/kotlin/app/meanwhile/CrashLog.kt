@@ -1,5 +1,6 @@
 package app.meanwhile
 
+import app.meanwhile.log.AppLog
 import android.content.Context
 import android.util.Log
 import java.io.File
@@ -17,6 +18,7 @@ object CrashLog {
     fun install(context: Context) {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            AppLog.e("Crash", "uncaught on ${thread.name}: ${e.message ?: e::class.java.simpleName}", e)
             try {
                 val text = "Crash ${Instant.now()} on ${thread.name}\n${Log.getStackTraceString(e)}"
                 File(context.filesDir, FILE).writeText(text.take(MAX_CHARS))

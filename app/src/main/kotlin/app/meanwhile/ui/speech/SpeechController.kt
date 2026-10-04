@@ -1,5 +1,6 @@
 package app.meanwhile.ui.speech
 
+import app.meanwhile.log.AppLog
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -58,6 +59,7 @@ class SpeechController(private val context: Context) {
 
             override fun onError(code: Int) {
                 listening = false
+                AppLog.w("Speech", "recognizer error $code")
                 error = when (code) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Didn't catch that — try again"
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission needed"

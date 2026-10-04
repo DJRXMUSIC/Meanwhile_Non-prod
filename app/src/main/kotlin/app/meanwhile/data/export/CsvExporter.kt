@@ -21,7 +21,8 @@ data class ExportResult(val zip: File, val csvByTable: Map<String, File>, val ro
 /** Settings → Export: one CSV per table plus a zip of all of them (spec §12.4). */
 class CsvExporter(private val context: Context, private val sync: SyncEngine) {
 
-    suspend fun export(from: Long, to: Long, tables: Set<String>? = null): ExportResult = withContext(Dispatchers.IO) {
+    /** [extras] are extra text files for the zip (diagnostics report, app log). */
+    suspend fun export(from: Long, to: Long, tables: Set<String>? = null, extras: Map<String, String> = emptyMap()): ExportResult = withContext(Dispatchers.IO) {
         val data = sync.export(from, to, tables)
         val dir = File(context.cacheDir, EXPORT_DIR).apply {
             deleteRecursively()
@@ -32,8 +33,9 @@ class CsvExporter(private val context: Context, private val sync: SyncEngine) {
             File(dir, "$name-$stamp.csv").also { writeCsv(it, value.first, value.second) }
         }
         val zip = File(dir, "meanwhile-export-$stamp.zip")
+        val extraFiles = extras.map { (name, text) -> File(dir, name).apply { writeText(text) } }
         ZipOutputStream(zip.outputStream().buffered()).use { out ->
-            for (file in csvs.values) {
+            for (file in csvs.values + extraFiles) {
                 out.putNextEntry(ZipEntry(file.name))
                 file.inputStream().use { it.copyTo(out) }
                 out.closeEntry()

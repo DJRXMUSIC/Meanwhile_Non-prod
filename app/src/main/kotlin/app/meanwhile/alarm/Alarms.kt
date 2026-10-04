@@ -1,10 +1,10 @@
 package app.meanwhile.alarm
 
+import app.meanwhile.log.AppLog
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 
 /** Exact alarms (spec §13.3): split-dose reminders now; 1 am learn cycle and 6 am F11 in M7. */
 object Alarms {
@@ -40,7 +40,7 @@ object Alarms {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
             }
         } catch (e: SecurityException) {
-            Log.w("Alarms", "exact alarm refused: ${e.message}")
+            AppLog.w("Alarms", "exact alarm refused, using inexact: ${e.message}")
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
         }
     }

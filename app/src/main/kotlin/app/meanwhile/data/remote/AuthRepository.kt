@@ -1,5 +1,6 @@
 package app.meanwhile.data.remote
 
+import app.meanwhile.log.AppLog
 import app.meanwhile.data.settings.SettingsStore
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -96,8 +97,10 @@ class AuthRepository(
     private suspend fun <T> runAuth(block: suspend () -> T): Result<T> = try {
         Result.success(block())
     } catch (e: RestException) {
+        AppLog.w("Auth", "auth request failed: ${e.description ?: e.error}")
         Result.failure(IllegalStateException(e.description ?: e.error, e))
     } catch (e: Exception) {
+        AppLog.w("Auth", "auth request failed: ${e.message}", e)
         Result.failure(e)
     }
 

@@ -1,5 +1,6 @@
 package app.meanwhile.ui.main
 
+import app.meanwhile.log.AppLog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -167,6 +168,7 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (e is DoseUnavailableException) AppLog.w("Input", e.message.orEmpty()) else AppLog.e("Input", "action failed: ${e.message}", e)
                 val s = session
                 val text = if (e is DoseUnavailableException) e.message.orEmpty() else "Something went wrong: ${e.message ?: e::class.java.simpleName}"
                 val err = InfoCard("err-${System.nanoTime()}", text, isError = true)

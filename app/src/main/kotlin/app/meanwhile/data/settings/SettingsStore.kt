@@ -27,6 +27,22 @@ enum class AiProviderPreference(val wire: String, val label: String) {
     }
 }
 
+/**
+ * How much continuous learning may change on its own. AUTO (Danny's choice, 1.3): learned changes
+ * apply immediately, each one is announced, judged on the outcomes that follow and reverted if they
+ * got worse; Danny can undo any of them. Dose logging always stays manual.
+ */
+enum class LearningAutonomy(val wire: String, val label: String, val detail: String) {
+    AUTO("auto", "Automatic", "Apply what it learns right away and tell me. Worse outcomes are reverted automatically."),
+    AUTO_FACTORS("auto_factors", "Automatic for factors", "Factor tuning applies on its own; ICR, ISF, target and the insulin curve wait for me."),
+    ASK("ask", "Ask me first", "Every learned change waits for my review."),
+    ;
+
+    companion object {
+        fun fromWire(value: String?) = entries.firstOrNull { it.wire == value } ?: AUTO
+    }
+}
+
 /** Light/dark appearance; SYSTEM follows the phone. */
 enum class ThemeMode(val wire: String, val label: String) {
     SYSTEM("system", "Follow system"),
@@ -52,6 +68,7 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     /** Color palette id (ui.theme.Palettes); unknown ids fall back to the default. */
     val palette: String = "teal",
+    val learningAutonomy: LearningAutonomy = LearningAutonomy.AUTO,
 ) {
     companion object {
         const val DEFAULT_XDRIP_URL = "http://127.0.0.1:17580"
@@ -82,6 +99,7 @@ class SettingsStore(context: Context) {
         val setupPromptsShown = booleanPreferencesKey("setup_prompts_shown")
         val themeMode = stringPreferencesKey("theme_mode")
         val palette = stringPreferencesKey("theme_palette")
+        val learningAutonomy = stringPreferencesKey("learning_autonomy")
         val syncLastSuccess = longPreferencesKey("sync_last_success")
         val syncLastAttempt = longPreferencesKey("sync_last_attempt")
         val syncLastError = stringPreferencesKey("sync_last_error")
@@ -103,6 +121,7 @@ class SettingsStore(context: Context) {
         setupPromptsShown = this[Keys.setupPromptsShown] ?: false,
         themeMode = ThemeMode.fromWire(this[Keys.themeMode]),
         palette = this[Keys.palette] ?: "teal",
+        learningAutonomy = LearningAutonomy.fromWire(this[Keys.learningAutonomy]),
     )
 
     val settings: Flow<AppSettings> = store.data.map { it.toSettings() }
@@ -124,6 +143,7 @@ class SettingsStore(context: Context) {
             p[Keys.setupPromptsShown] = new.setupPromptsShown
             p[Keys.themeMode] = new.themeMode.wire
             p[Keys.palette] = new.palette
+            p[Keys.learningAutonomy] = new.learningAutonomy.wire
         }
     }
 

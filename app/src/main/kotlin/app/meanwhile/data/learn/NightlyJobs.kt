@@ -2,9 +2,6 @@ package app.meanwhile.data.learn
 
 import android.content.Context
 import app.meanwhile.data.RecordFactory
-import app.meanwhile.data.ai.AiClient
-import app.meanwhile.data.ai.AiOutcome
-import app.meanwhile.data.ai.LearnCycleDto
 import app.meanwhile.data.cgm.CgmRepository
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.data.db.OutcomeEntity
@@ -50,16 +47,15 @@ class NightlyJobs(
     private val records: RecordFactory,
     private val profiles: ProfileRepository,
     private val cgm: CgmRepository,
-    private val ai: AiClient,
     private val settings: SettingsStore,
     private val onWrite: () -> Unit,
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
+    private val learning: () -> LearningEngine,
 ) {
     private val learnLock = Mutex()
     // Called from the CGM service, app start, alarms and the learn cycle — possibly at the same time.
     private val outcomeLock = Mutex()
     private val overnightLock = Mutex()
-    private val payloads = LearnPayload(db)
 
     /** The night the most recent 1 am reset belongs to (its local date). */
     suspend fun nightOf(now: Instant = Instant.now()): Pair<LocalDate, Instant> {
@@ -82,34 +78,10 @@ class NightlyJobs(
     private suspend fun runLearnCycle(date: LocalDate, resetAt: Instant, now: Instant): LearnResult {
         tagOutcomes(now)
         // Step 1: the 1 am reset — expired activations drop out of the profile sent for analysis.
-        val current = profiles.current()
-        val profile = FactorEngine.prune(current.profile, resetAt, zone())
-        val payload = payloads.build(profile, resetAt, zone(), now)
-        var out = ai.call("learn_cycle", payload, null, "learn_cycle for $date", AiClient.LEARN_TIMEOUT_MS)
-        if (out is AiOutcome.Failed && out.retryWith != null) {
-            out = ai.call("learn_cycle", payload, null, "learn_cycle for $date (retry ${out.retryWith})", AiClient.LEARN_TIMEOUT_MS, preferenceWire = out.retryWith)
-        }
-        val result = when (out) {
-            is AiOutcome.Failed -> LearnResult("failed", "Learn cycle couldn't run (${out.reason}). Yesterday's profile carried forward.", at = now.toEpochMilli())
-            is AiOutcome.Ok -> {
-                val dto = runCatching { AppJson.decodeFromJsonElement(LearnCycleDto.serializer(), out.result) }.getOrNull()
-                if (dto == null) {
-                    LearnResult("failed", "Learn cycle result couldn't be read. Yesterday's profile carried forward.", at = now.toEpochMilli())
-                } else {
-                    val changes = LearnMapping.changes(dto, current.profile)
-                    if (changes.isEmpty()) {
-                        LearnResult("no_changes", dto.summary.ifBlank { "No changes proposed." }, observations = dto.observations, at = now.toEpochMilli())
-                    } else {
-                        val proposed = app.meanwhile.domain.profile.ProfilePatch.apply(current.profile, changes).getOrDefault(current.profile)
-                        val v = profiles.saveVersion(
-                            proposed, ProfileSource.LEARN_CYCLE, ProfileStatus.PENDING,
-                            summary = dto.summary.take(500), changes = changes, aiCallId = out.callId, now = now,
-                        )
-                        LearnResult("done", dto.summary, versionId = v.id, observations = dto.observations, at = now.toEpochMilli())
-                    }
-                }
-            }
-        }
+        val profile = FactorEngine.prune(profiles.current().profile, resetAt, zone())
+        // Steps 2–4 (judge, tune, AI review, apply per autonomy) live in the learning engine.
+        learning().afterOutcomes(now)
+        val result = learning().nightlyReview(now, resetAt, profile)
         settings.setMarker("learn_result_$date", AppJson.encodeToString(LearnResult.serializer(), result))
         // A failure is still "done" for the alarm; the morning report offers a retry.
         settings.setMarker(KEY_LEARN_DONE, date.toString())
@@ -117,6 +89,7 @@ class NightlyJobs(
             context, Notifications.ID_MORNING_REPORT, Notifications.CHANNEL_REPORTS, "Morning report ready",
             when (result.status) {
                 "done" -> "Proposed profile changes to review: ${result.message}".take(200)
+                "applied" -> "Profile updated overnight: ${result.message}".take(200)
                 "no_changes" -> "No profile changes proposed overnight."
                 else -> result.message
             },

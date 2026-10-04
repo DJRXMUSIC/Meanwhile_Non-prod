@@ -1,5 +1,6 @@
 package app.meanwhile.data.ai
 
+import app.meanwhile.log.AppLog
 import app.meanwhile.data.RecordFactory
 import app.meanwhile.data.db.AiCallEntity
 import app.meanwhile.data.db.AppDatabase
@@ -139,6 +140,11 @@ class AiClient(
             ),
         )
         onWrite()
+        if (ok) {
+            AppLog.i("AI", "$job ok · ${envelope!!.provider}/${envelope.model} · ${latency} ms" + if (envelope.fallbackUsed) " (fallback)" else "")
+        } else {
+            AppLog.w("AI", "$job failed after $latency ms: $error")
+        }
         return if (ok) {
             _status.update { it.copy(lastOkAt = System.currentTimeMillis()) }
             AiOutcome.Ok(envelope!!.result!!, envelope.provider!!, envelope.model ?: "", latency, envelope.fallbackUsed, m.id)

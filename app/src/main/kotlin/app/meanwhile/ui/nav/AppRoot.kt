@@ -30,6 +30,8 @@ import app.meanwhile.ui.settings.ExportScreen
 import app.meanwhile.ui.settings.SettingsScreen
 import app.meanwhile.ui.setup.SetupScreen
 import app.meanwhile.ui.stats.StatsScreen
+import app.meanwhile.ui.learning.LearningScreen
+import app.meanwhile.ui.diag.LogScreen
 import kotlinx.coroutines.launch
 
 object Routes {
@@ -45,12 +47,14 @@ object Routes {
     const val REVIEW = "review"
     const val MORNING = "morning"
     const val STATS = "stats"
+    const val LEARNING = "learning"
+    const val LOG = "log"
 
     fun profileVersion(id: String) = "$PROFILE_VERSION/$id"
     fun profileJson(path: String) = "$PROFILE_JSON?path=$path"
 
     private val UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-    private val externalDestinations = Regex("^(?:$MAIN|$SETTINGS|$MORNING|$STATS|$PROFILE|$SETUP|$REVIEW/$UUID|$PROFILE_VERSION/$UUID)$")
+    private val externalDestinations = Regex("^(?:$MAIN|$SETTINGS|$MORNING|$STATS|$LEARNING|$LOG|$PROFILE|$SETUP|$REVIEW/$UUID|$PROFILE_VERSION/$UUID)$")
 
     /**
      * Screens a notification may open. The launcher activity is exported, so any app can start it with
@@ -105,6 +109,12 @@ private fun AppNavHost(openRequest: String?, onOpenHandled: () -> Unit) {
         }
         composable(Routes.STATS) {
             StatsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.LEARNING) {
+            LearningScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.LOG) {
+            LogScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.MORNING) {
             MorningReportScreen(onDone = { nav.popBackStack() })

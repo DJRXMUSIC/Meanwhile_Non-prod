@@ -20,10 +20,21 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-/** Builds the nightly learn-cycle payload (spec §11.1 step 2) from the local DB. */
+/**
+ * Builds the learn-cycle payload (spec §11.1 step 2) from the local DB: the 24 h before [windowEnd]
+ * in detail, a 14-day summary, and (1.3) the learning context — lessons, evidence, changes under
+ * evaluation and recent verdicts — so every review builds on what was already learned.
+ */
 class LearnPayload(private val db: AppDatabase) {
 
-    suspend fun build(profile: Profile, windowEnd: Instant, zone: ZoneId, now: Instant): JsonObject {
+    suspend fun build(
+        profile: Profile,
+        windowEnd: Instant,
+        zone: ZoneId,
+        now: Instant,
+        mode: String = "nightly",
+        learning: JsonObject? = null,
+    ): JsonObject {
         val dayStart = windowEnd.minus(Duration.ofHours(24))
         val start14 = windowEnd.minus(Duration.ofDays(14))
         val readings14 = db.cgm().between(start14.toEpochMilli(), windowEnd.toEpochMilli()).map { it.toDomain() }
@@ -40,8 +51,10 @@ class LearnPayload(private val db: AppDatabase) {
             ProposalFollow.classify(finalUnits, dosesByProposal[proposalId].orEmpty())
 
         return buildJsonObject {
+            put("mode", mode)
             put("now", isoOf(now.toEpochMilli()))
             put("timezone", zone.id)
+            learning?.let { put("learning", it) }
             put("window_end", isoOf(windowEnd.toEpochMilli()))
             put("profile", ProfileJson.tree(profile))
             putJsonObject("last_24h") {

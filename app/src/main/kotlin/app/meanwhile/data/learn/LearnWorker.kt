@@ -1,5 +1,6 @@
 package app.meanwhile.data.learn
 
+import app.meanwhile.log.AppLog
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -16,6 +17,7 @@ class LearnWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         val c = (applicationContext as MeanwhileApp).container
         val force = inputData.getBoolean(KEY_FORCE, false)
+        AppLog.i("Learn", "nightly worker running" + if (force) " (retry)" else "")
         val result = c.nightly.learnCycleIfNeeded(force = force)
         if (result?.status == "failed" && !force) enqueueRetryWhenOnline(applicationContext)
         return Result.success()

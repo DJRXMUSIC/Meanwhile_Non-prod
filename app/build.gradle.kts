@@ -14,6 +14,8 @@ val appVersion = providers.gradleProperty("appVersion").get()
 val supabaseUrl = config("SUPABASE_URL", "supabaseUrl")
 val supabaseAnonKey = config("SUPABASE_ANON_KEY", "supabaseAnonKey")
 val keystorePath = config("KEYSTORE_PATH", "keystorePath")
+// Which commit this APK was built from (GitHub Actions sets GITHUB_SHA); shown in diagnostics.
+val gitSha = config("GITHUB_SHA", "gitSha").take(7)
 
 android {
     namespace = "app.meanwhile"
@@ -29,6 +31,7 @@ android {
 
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
     }
 
     signingConfigs {

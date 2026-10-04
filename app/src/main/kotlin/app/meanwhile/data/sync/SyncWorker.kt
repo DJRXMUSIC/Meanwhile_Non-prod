@@ -1,5 +1,6 @@
 package app.meanwhile.data.sync
 
+import app.meanwhile.log.AppLog
 import android.content.Context
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -20,6 +21,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val container = (applicationContext as MeanwhileApp).container
         // Watchdog: WorkManager survives the OS killing the CGM service — restart it and catch up
         // on outcome tagging / a missed 6 am check, so the app heals itself without being opened.
+        if (AppLog.throttle("watchdog-tick", 60 * 60_000L)) AppLog.i("Watchdog", "periodic check ran")
         CgmService.start(applicationContext)
         runCatching { container.housekeeping() }
         // Offline is not a failure: the next 15-min run tries again (CGM is localhost and must not

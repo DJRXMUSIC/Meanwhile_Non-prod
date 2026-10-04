@@ -1,5 +1,6 @@
 package app.meanwhile.data.profile
 
+import app.meanwhile.log.AppLog
 import app.meanwhile.data.RecordFactory
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.data.db.FactorDefinitionEntity
@@ -42,6 +43,10 @@ object ProfileSource {
     const val MANUAL = "manual"
     const val AUTO_F11 = "auto_f11"
     const val SLEEP_CHECKIN = "sleep_checkin"
+    /** Local, deterministic tuning from dose outcomes (1.3). */
+    const val AUTO_TUNE = "auto_tune"
+    /** A learned change reverted because the outcomes after it got worse (1.3). */
+    const val AUTO_REVERT = "auto_revert"
 }
 
 val changeListSerializer = ListSerializer(ProfileChange.serializer())
@@ -113,6 +118,7 @@ class ProfileRepository(
             summary = summary,
         )
         db.profileVersions().insert(entity)
+        AppLog.i("Profile", "v${entity.version} $source/$status: ${summary.take(160)}")
         if (status in ProfileStatus.APPLIED) recordDefinitionChanges(base.profile, pruned, entity.id, now)
         onWrite()
         entity

@@ -1,5 +1,6 @@
 package app.meanwhile.data.input
 
+import app.meanwhile.log.AppLog
 import app.meanwhile.data.RecordFactory
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.data.db.DoseEntity
@@ -61,8 +62,12 @@ class NbaService(
         val ctx = contexts.build(now)
         val input = ctx.input(meal.carbsG, meal.fatG, meal.proteinG, meal.liquidOrSugary, bgOverride)
         val result = DoseEngine.compute(input, ctx.profile.profile)
-        if (result.profileProblems.isNotEmpty()) throw DoseUnavailableException(result.profileProblems)
+        if (result.profileProblems.isNotEmpty()) {
+            AppLog.w("NBA", "no dose: invalid profile — ${result.profileProblems.joinToString("; ")}")
+            throw DoseUnavailableException(result.profileProblems)
+        }
         val ms = (System.nanoTime() - started) / 1_000_000
+        if (ms > 200) AppLog.w("NBA", "slow calculation: $ms ms (target < 200)")
         val stale = ctx.bgAgeMinutes == null || ctx.bgAgeMinutes > staleMinutes()
         val m = records.meta(now = now.toEpochMilli())
         val snapshot = ProposalSnapshot(input, meal, ctx.bgAgeMinutes, stale, ctx.profile.versionLabel, ms)
@@ -137,6 +142,7 @@ class NbaService(
             ),
         )
         if (second > 0) scheduleSecond(card.proposalId, second, dueAt)
+        AppLog.i("Dose", "logged $nowUnits u for proposal ${card.proposalId.take(8)} (proposed ${card.result.finalUnits})" + if (second > 0) " + $second u later" else "")
         onWrite()
         return buildString {
             append("Logged $nowUnits u")
@@ -153,6 +159,7 @@ class NbaService(
     suspend fun logSecond(proposalId: String, units: Int, reason: String? = null, skipped: Boolean = false, now: Instant = Instant.now()): Boolean = secondLock.withLock {
         val forProposal = db.doses().forProposal(proposalId)
         if (forProposal.any { it.splitPart == 2 }) {
+            AppLog.i("Dose", "second injection for ${proposalId.take(8)} already logged — ignored duplicate")
             cancelSecond(proposalId)
             return@withLock false
         }

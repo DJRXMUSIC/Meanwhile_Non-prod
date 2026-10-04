@@ -10,6 +10,7 @@ import app.meanwhile.data.db.FactorDefinitionEntity
 import app.meanwhile.data.db.FactorEventEntity
 import app.meanwhile.data.db.FeedbackEntity
 import app.meanwhile.data.db.InputEntity
+import app.meanwhile.data.db.LearningLogEntity
 import app.meanwhile.data.db.MealEntity
 import app.meanwhile.data.db.OutcomeEntity
 import app.meanwhile.data.db.ProfileVersionEntity
@@ -125,6 +126,12 @@ fun syncTables(db: AppDatabase): List<SyncTable<*>> = listOf(
     db.inputs().let { d ->
         SyncTable(
             "inputs", InputEntity.serializer(),
+            d::pending, d::markSynced, d::markFailed, { d.insertAll(it) }, d::between,
+        ) { it.copy(syncState = SyncState.SYNCED) }
+    },
+    db.learningLog().let { d ->
+        SyncTable(
+            "learning_log", LearningLogEntity.serializer(),
             d::pending, d::markSynced, d::markFailed, { d.insertAll(it) }, d::between,
         ) { it.copy(syncState = SyncState.SYNCED) }
     },

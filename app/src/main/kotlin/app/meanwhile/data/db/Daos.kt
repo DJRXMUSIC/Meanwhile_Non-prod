@@ -187,6 +187,12 @@ interface ProfileVersionDao : RecordDao<ProfileVersionEntity> {
     @Query("SELECT * FROM profile_versions WHERE supersedesId = :id LIMIT 1")
     suspend fun supersededBy(id: String): ProfileVersionEntity?
 
+    @Query(
+        "SELECT * FROM profile_versions WHERE status = 'pending' AND id NOT IN " +
+            "(SELECT supersedesId FROM profile_versions WHERE supersedesId IS NOT NULL)",
+    )
+    suspend fun pendingUndecided(): List<ProfileVersionEntity>
+
     @Query("SELECT * FROM profile_versions WHERE aiCallId IS NOT NULL AND createdAt >= :from")
     suspend fun aiLinkedSince(from: Long): List<ProfileVersionEntity>
 
@@ -235,6 +241,9 @@ interface AiCallDao : RecordDao<AiCallEntity> {
 
 @Dao
 interface FeedbackDao : RecordDao<FeedbackEntity> {
+    @Query("SELECT * FROM feedback WHERE context = :context ORDER BY recordedAt DESC LIMIT :limit")
+    suspend fun byContext(context: String, limit: Int): List<FeedbackEntity>
+
     @Query("SELECT * FROM feedback WHERE syncState = 0 ORDER BY createdAt LIMIT :limit")
     suspend fun pending(limit: Int): List<FeedbackEntity>
 
@@ -282,6 +291,46 @@ interface AiQueueDao {
 }
 
 @Dao
+interface LearningLogDao : RecordDao<LearningLogEntity> {
+    @Query("SELECT * FROM learning_log WHERE syncState = 0 ORDER BY createdAt LIMIT :limit")
+    suspend fun pending(limit: Int): List<LearningLogEntity>
+
+    @Query("UPDATE learning_log SET syncState = 1 WHERE id IN (:ids)")
+    suspend fun markSynced(ids: List<String>)
+
+    @Query("UPDATE learning_log SET syncState = 2 WHERE id IN (:ids)")
+    suspend fun markFailed(ids: List<String>)
+
+    @Query("SELECT * FROM learning_log WHERE recordedAt BETWEEN :from AND :to ORDER BY recordedAt")
+    suspend fun between(from: Long, to: Long): List<LearningLogEntity>
+
+    @Query("SELECT * FROM learning_log ORDER BY recordedAt DESC, createdAt DESC LIMIT :limit")
+    fun recentFlow(limit: Int): Flow<List<LearningLogEntity>>
+
+    @Query("SELECT * FROM learning_log WHERE recordedAt >= :from ORDER BY recordedAt")
+    suspend fun since(from: Long): List<LearningLogEntity>
+
+    @Query("SELECT * FROM learning_log WHERE id = :id")
+    suspend fun byId(id: String): LearningLogEntity?
+
+    /** Applied changes not yet closed by a kept / reverted / undone row. */
+    @Query(
+        "SELECT * FROM learning_log WHERE kind = 'applied' AND id NOT IN " +
+            "(SELECT supersedesId FROM learning_log WHERE supersedesId IS NOT NULL) ORDER BY recordedAt",
+    )
+    suspend fun openChanges(): List<LearningLogEntity>
+
+    @Query(
+        "SELECT * FROM learning_log WHERE kind = 'applied' AND id NOT IN " +
+            "(SELECT supersedesId FROM learning_log WHERE supersedesId IS NOT NULL) ORDER BY recordedAt DESC",
+    )
+    fun openChangesFlow(): Flow<List<LearningLogEntity>>
+
+    @Query("SELECT * FROM learning_log WHERE kind = :kind ORDER BY recordedAt DESC LIMIT 1")
+    suspend fun latest(kind: String): LearningLogEntity?
+}
+
+@Dao
 interface SyncDao {
     @Query(
         """
@@ -296,6 +345,7 @@ interface SyncDao {
              + (SELECT COUNT(*) FROM ai_calls WHERE syncState = 0)
              + (SELECT COUNT(*) FROM feedback WHERE syncState = 0)
              + (SELECT COUNT(*) FROM inputs WHERE syncState = 0)
+             + (SELECT COUNT(*) FROM learning_log WHERE syncState = 0)
         """,
     )
     fun pendingCount(): Flow<Int>
@@ -313,6 +363,7 @@ interface SyncDao {
              + (SELECT COUNT(*) FROM ai_calls WHERE syncState = 2)
              + (SELECT COUNT(*) FROM feedback WHERE syncState = 2)
              + (SELECT COUNT(*) FROM inputs WHERE syncState = 2)
+             + (SELECT COUNT(*) FROM learning_log WHERE syncState = 2)
         """,
     )
     fun rejectedCount(): Flow<Int>

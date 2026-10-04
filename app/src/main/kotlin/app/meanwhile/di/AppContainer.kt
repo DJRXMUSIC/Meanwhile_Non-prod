@@ -1,7 +1,9 @@
 package app.meanwhile.di
 
+import app.meanwhile.log.AppLog
 import android.app.Application
 import app.meanwhile.CrashLog
+import app.meanwhile.diag.Diagnostics
 import app.meanwhile.data.RecordFactory
 import app.meanwhile.data.cgm.CgmFeedStatus
 import app.meanwhile.data.cgm.CgmIntake
@@ -22,6 +24,7 @@ import app.meanwhile.data.input.FactorUpdater
 import app.meanwhile.data.input.InputProcessor
 import app.meanwhile.data.input.NbaService
 import app.meanwhile.data.learn.LearnWorker
+import app.meanwhile.data.learn.LearningEngine
 import app.meanwhile.data.learn.NightlyJobs
 import app.meanwhile.data.profile.ProfileRepository
 import app.meanwhile.data.db.FeedbackEntity
@@ -34,7 +37,6 @@ import app.meanwhile.data.stats.StatsRepository
 import app.meanwhile.data.sync.SyncEngine
 import app.meanwhile.data.sync.SyncWorker
 import app.meanwhile.service.CgmService
-import android.util.Log
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +55,7 @@ import java.util.concurrent.TimeUnit
 class AppContainer(val app: Application) {
     /** Background work; a failure is logged, never fatal (it would also take down CGM intake). */
     val appScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("Meanwhile", "background task failed", e) },
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> AppLog.e("Background", "task failed: ${e.message ?: e::class.java.simpleName}", e) },
     )
 
     val db: AppDatabase by lazy { AppDatabase.build(app) }
@@ -75,6 +77,14 @@ class AppContainer(val app: Application) {
     val cgmStatus = MutableStateFlow(CgmFeedStatus())
     val xdripWeb: XdripWebSource by lazy {
         XdripWebSource(http, settings) { ok, message ->
+            val was = cgmStatus.value.webOk
+            // Polling runs every minute: log the transitions, and a failure at most every 30 min.
+            if (ok && was == false) {
+                AppLog.i("CGM", "xDrip+ web service reachable again")
+                AppLog.clearThrottle("xdrip-web-failing")
+            } else if (!ok && AppLog.throttle("xdrip-web-failing", 30 * 60_000L)) {
+                AppLog.w("CGM", "xDrip+ web service unreachable: $message")
+            }
             cgmStatus.update {
                 it.copy(webOk = ok, webMessage = message, lastWebOkAt = if (ok) System.currentTimeMillis() else it.lastWebOkAt)
             }
@@ -98,14 +108,17 @@ class AppContainer(val app: Application) {
     val ai: AiClient by lazy { AiClient(supabase, db, records, auth, settings, network, ::requestSync) }
     val aiHooksImpl: AiHooksImpl by lazy { AiHooksImpl(ai, db) }
     val aiQueue: AiQueueProcessor by lazy { AiQueueProcessor(app, db, ai, aiHooksImpl, profiles) }
-    val review: ProposalReview by lazy { ProposalReview(db, records, profiles, ::requestSync) }
+    // Learned changes Danny accepts in a review are watched (keep/revert) like auto-applied ones.
+    val review: ProposalReview by lazy { ProposalReview(db, records, profiles, ::requestSync) { v, applied -> learning.trackReviewed(v, applied) } }
 
     /** Online AI steps when Supabase is configured; the offline path never needs them. */
     val aiHooks: AiHooks get() = if (supabase != null) aiHooksImpl else object : AiHooks {}
     val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync) { aiHooks } }
 
-    val nightly: NightlyJobs by lazy { NightlyJobs(app, db, records, profiles, cgm, ai, settings, ::requestSync) }
+    val learning: LearningEngine by lazy { LearningEngine(app, db, records, profiles, ai, settings, ::requestSync) }
+    val nightly: NightlyJobs by lazy { NightlyJobs(app, db, records, profiles, cgm, settings, ::requestSync, learning = { learning }) }
     val stats: StatsRepository by lazy { StatsRepository(db) }
+    val diagnostics: Diagnostics by lazy { Diagnostics(this) }
 
     fun requestSync() = SyncWorker.requestNow(app)
 
@@ -132,6 +145,7 @@ class AppContainer(val app: Application) {
 
     /** Daily alarms (spec §11.1). The learn cycle runs in a worker (AI call up to ~2 min). */
     suspend fun onAlarm(action: String?) {
+        AppLog.i("Alarm", "fired: ${action?.substringAfterLast('.')}")
         when (action) {
             Alarms.ACTION_LEARN -> LearnWorker.enqueue(app)
             Alarms.ACTION_F11 -> runCatching { nightly.overnightIfNeeded() }
@@ -141,8 +155,10 @@ class AppContainer(val app: Application) {
 
     /** Periodic housekeeping from the CGM service: outcome tagging and a missed 6 am F11. */
     suspend fun housekeeping() {
-        runCatching { nightly.tagOutcomes() }
-        runCatching { nightly.overnightIfNeeded() }
+        runCatching { nightly.tagOutcomes() }.onFailure { AppLog.e("Housekeeping", "outcome tagging failed: ${it.message}", it) }
+        runCatching { nightly.overnightIfNeeded() }.onFailure { AppLog.e("Housekeeping", "overnight check failed: ${it.message}", it) }
+        // Continuous learning: new outcomes → lessons → judge open changes → tune → maybe an AI review.
+        runCatching { learning.afterOutcomes() }.onFailure { AppLog.e("Housekeeping", "learning failed: ${it.message}", it) }
     }
 
     fun start() {

@@ -1,8 +1,8 @@
 package app.meanwhile.ui.common
 
+import app.meanwhile.log.AppLog
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -19,7 +19,7 @@ fun rememberSafeScope(): CoroutineScope {
     val context = LocalContext.current.applicationContext
     return rememberCoroutineScope {
         CoroutineExceptionHandler { _, e ->
-            Log.e("Meanwhile", "UI action failed", e)
+            AppLog.e("UI", "button action failed: ${e.message ?: e::class.java.simpleName}", e)
             Handler(Looper.getMainLooper()).post {
                 Toast.makeText(context, "Something went wrong: ${e.message ?: e::class.java.simpleName}", Toast.LENGTH_LONG).show()
             }

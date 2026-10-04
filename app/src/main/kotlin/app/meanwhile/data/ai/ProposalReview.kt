@@ -6,6 +6,7 @@ import app.meanwhile.data.db.FactorEventEntity
 import app.meanwhile.data.db.ProfileVersionEntity
 import app.meanwhile.data.json.AppJson
 import app.meanwhile.data.profile.ProfileRepository
+import app.meanwhile.data.profile.ProfileSource
 import app.meanwhile.data.profile.ProfileStatus
 import app.meanwhile.data.profile.changes
 import app.meanwhile.domain.profile.ActiveFactor
@@ -30,6 +31,8 @@ class ProposalReview(
     private val records: RecordFactory,
     private val profiles: ProfileRepository,
     private val onWrite: () -> Unit,
+    /** Learned changes Danny accepted (learning sources only): start watching their outcomes. */
+    private val onLearnedApplied: suspend (ProfileVersionEntity, List<ProfileChange>) -> Unit = { _, _ -> },
 ) {
     suspend fun decide(pending: ProfileVersionEntity, decisions: List<ChangeDecision>, now: Instant = Instant.now()): Result<ProfileVersionEntity> = runCatching {
         val annotated = decisions.map { d ->
@@ -54,11 +57,16 @@ class ProposalReview(
             changes = annotated, supersedesId = pending.id, aiCallId = pending.aiCallId, now = now,
         )
         logActivationEvents(applied, version.id, now)
+        if (applied.isNotEmpty() && pending.source in LEARNING_SOURCES) onLearnedApplied(version, applied)
         onWrite()
         version
     }
 
     fun proposedChanges(pending: ProfileVersionEntity): List<ProfileChange> = pending.changes()
+
+    private companion object {
+        val LEARNING_SOURCES = setOf(ProfileSource.LEARN_CYCLE, ProfileSource.AUTO_TUNE, ProfileSource.AUTO_REVERT)
+    }
 
     /** Accepted `active.F*` changes are factor activations: record them as factor events (source ai). */
     private suspend fun logActivationEvents(applied: List<ProfileChange>, versionId: String, now: Instant) {

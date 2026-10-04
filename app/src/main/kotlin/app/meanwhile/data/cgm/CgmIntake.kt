@@ -1,6 +1,6 @@
 package app.meanwhile.data.cgm
 
-import android.util.Log
+import app.meanwhile.log.AppLog
 import app.meanwhile.data.settings.SettingsStore
 import app.meanwhile.domain.cgm.CgmReading
 import kotlinx.coroutines.CoroutineScope
@@ -63,7 +63,7 @@ class CgmIntake(
         } else {
             repo.save(fromWeb)
             if (fromWeb.none { it.timestamp == reading.timestamp }) {
-                Log.w("CgmIntake", "broadcast reading at ${reading.timestamp} not confirmed by xDrip+ web service; ignored")
+                AppLog.w("CGM", "broadcast reading at ${reading.timestamp} not confirmed by the xDrip+ web service; ignored")
             }
         }
     }
@@ -76,7 +76,7 @@ class CgmIntake(
             status.update { it.copy(lastBackCapture = "Back-filled $n readings") }
             n
         } catch (e: IOException) {
-            Log.w("CgmIntake", "back-capture failed: ${e.message}")
+            AppLog.w("CGM", "back-capture failed: ${e.message}")
             status.update { it.copy(lastBackCapture = "Back-fill failed: ${e.message}") }
             0
         }

@@ -1,7 +1,7 @@
 package app.meanwhile.data.sync
 
+import app.meanwhile.log.AppLog
 import android.content.Context
-import android.util.Log
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.data.json.RecordJson
 import app.meanwhile.data.remote.AuthRepository
@@ -48,10 +48,14 @@ class SyncEngine(
         try {
             for (t in tables) push(c, t, uid)
             for (t in tables) pull(c, t)
+            if (settings.syncStatus.first().failingSince != null) AppLog.i(TAG, "sync recovered")
+            AppLog.clearThrottle("sync-failing")
             settings.recordSyncSuccess(System.currentTimeMillis())
             Notifications.cancel(context, Notifications.ID_SYNC_FAILING)
             SyncOutcome.SUCCESS
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (AppLog.throttle("sync-failing", 30 * 60_000L)) AppLog.w(TAG, "sync failed (retrying automatically): ${e.message}", e)
             val since = settings.recordSyncFailure(now, e.message ?: e::class.java.simpleName)
             val pending = db.sync().pendingCount().first()
             if (pending > 0 && now - since > FAILING_NOTIFY_AFTER_MS && settings.claimSyncFailureNotification()) {
@@ -84,7 +88,7 @@ class SyncEngine(
                     } catch (rowError: RestException) {
                         if (!isRowProblem(rowError)) throw rowError
                         table.markRejected(listOf(id))
-                        Log.w(TAG, "Server rejected ${table.name}/$id: ${rowError.description ?: rowError.error}")
+                        AppLog.w(TAG, "server rejected ${table.name}/$id (kept on phone): ${rowError.description ?: rowError.error}")
                     }
                 }
             }

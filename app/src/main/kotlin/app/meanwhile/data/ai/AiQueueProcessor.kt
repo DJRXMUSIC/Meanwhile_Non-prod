@@ -1,7 +1,7 @@
 package app.meanwhile.data.ai
 
+import app.meanwhile.log.AppLog
 import android.content.Context
-import android.util.Log
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.data.json.AppJson
 import app.meanwhile.data.profile.ProfileRepository
@@ -91,7 +91,7 @@ class AiQueueProcessor(
                 )
             }
             db.aiQueue().remove(item.id)
-            Log.i("AiQueue", "processed ${item.id}: ${diff.size} changes")
+            AppLog.i("AiQueue", "processed queued update ${item.id}: ${diff.size} changes")
         }
     }
 
