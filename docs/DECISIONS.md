@@ -11,6 +11,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - M6 — AI layer: done (CI green; Deno tests in the supabase workflow)
 - M7 — learn cycle + morning report: done (CI green)
 - M8 — stats + polish: done (CI green)
+- 1.1 simple UI + palettes, 1.2 reliability + self-managing setup + voice: done (CI green)
+- 1.3 continuous learning, app log + diagnostics, full test suite: done (CI green)
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -298,3 +300,72 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   compounds included) at the router's front door — voice and typed input parse identically, on both
   the offline and the AI path (which parses numbers per span through the same router). Unit-tested.
 
+
+## Continuous learning (1.3)
+- **Why.** One AI review a night saw 24 hours, never measured how each dose actually landed, and
+  never checked whether its own changes helped. Danny asked for learning that is continuous,
+  documented and automatic.
+- **Lessons** (domain `Lessons`): once a dose's 4 h outcome is tagged it becomes a lesson — the
+  units that would have landed on target = given + (end BG − target) / ISF, using the 4 h minimum
+  instead when it went below 70. From the proposal's own snapshot (inputs, factors, IOB) that
+  becomes an implied ICR, ISF (correction-only doses) or units-per-event (caffeine). A lesson is
+  **clean** only with no other rapid dose or meal in its 4 h, a BG at dose time and CGM at 3–4 h;
+  confounded lessons are kept and shown, but only as context.
+- **Local tuner** (domain `Tuner`, deterministic, offline): ICR, ISF and units-per-event move
+  `learning.rate` (50%) of the way toward the median of their clean lessons in the last
+  `learning.lookbackDays` (14), once `learning.minLessons` (3) lessons *newer than the value's last
+  change* agree on a difference of at least `learning.minChangePct` (3%). Only fresh lessons count,
+  so the same evidence never moves a value twice. It runs after every outcome tagging (15-minute
+  background job, app start), so a change can land the same afternoon.
+- **Change evaluator** (domain `ChangeEvaluator`): every applied learned change is watched. After
+  `learning.evaluateAfterLessons` (3) relevant clean lessons, their mean miss (|end − target|, with
+  lows weighted 3×) is compared with the lessons before the change: worse by more than
+  `learning.revertIfWorsePct` (15%) → reverted; otherwise kept. A severe low (< `severeLowMgDl`, 54)
+  after a change toward more insulin reverts it at once.
+- **AI reviews:** the nightly review stays, and a mid-day **incremental** review runs once
+  `learning.aiMinNewLessons` (2) new clean lessons arrived and `learning.aiMinHoursBetween` (3 h)
+  passed. Prompt `learn_cycle-v2` gets the lessons, the evidence per value, the changes still being
+  judged and the 14-day journal, and is told the phone already tunes ICR/ISF/units-per-event, so the
+  AI focuses on what code can't see (time of day, factor weights and windows, fat/protein, new
+  factors). Learn-cycle changes go through the same apply → watch → keep/revert path.
+- **Autonomy — a deliberate change to principle 1.** Settings → Learning offers **Automatic**
+  (default), **Automatic for factors** (ICR/ISF/target/insulin curve wait for Danny) and **Ask me
+  first** (everything waits, as before). Default Automatic because Danny asked for it explicitly
+  ("I want it to be automatic"). What keeps Danny the gate: only values that keep the dose math valid
+  apply; every change is journaled with its evidence, notified, judged on the outcomes that follow
+  and auto-reverted when worse; one tap undoes it (Learning screen, morning report); with Ask me
+  first a learned value is proposed once and never stacked. Doses are still never logged without him.
+- **Journal** (`learning_log`, append-only, synced, RLS): `lessons`, `ai_review`, `applied`,
+  `proposed`, `kept`, `reverted`, `revert_proposed`, `undone`, `error`. A verdict closes its change
+  through `supersedes_id`, so "what is still under evaluation" is a query, not state. Supabase view
+  `v_learned_changes` shows every change with its fate. Room v1 → v2 with a hand-written migration.
+- **Outcome tagging looks back as far as learning does** (`learning.lookbackDays`, was 48 h): after
+  days without the app running, xDrip+ back-fills the readings and every dose still becomes a lesson.
+  Found by the new learning-engine tests.
+- **Every threshold is a profile value** (`profile.learning`, editable in Profile → Learning, validated).
+- Profile sources `auto_tune` and `auto_revert` join the spec's list.
+
+## App log & diagnostics (1.3)
+- **AppLog**: a rotating on-device log (2 × 768 KB) of info/warn/error lines with thread and stack
+  traces, also mirrored to logcat. Every background job, sync, AI call, CGM error, learning decision
+  and crash writes to it; repeated errors are throttled (one line per key per interval). No third-party
+  crash service — nothing leaves the phone unless Danny shares it.
+- **Diagnostics report** (Settings → Diagnostics → **Copy for AI** / **Share**, also on the App log
+  screen): one Markdown document written for an AI coding assistant — build + git SHA, device,
+  health of every moving part, problems in the last 72 h grouped by message with stack traces,
+  crashes, failed AI calls, the learning state, table counts and sync backlog, background markers and
+  the log tail. A redaction pass strips JWTs, API keys, emails, bearer/api-secret/password values.
+  Capped at 400 k characters so it pastes into any assistant.
+- Settings shows a badge with the number of warnings/errors in the last 24 h.
+
+## Test suite (1.3)
+- See `docs/TESTING.md`. Four suites — domain (JUnit), app (Robolectric over the real data layer
+  with in-memory Room), SQL (Postgres: migrations, RLS, append-only) and Edge Function (Deno).
+- **Robolectric at SDK 35** with a plain `Application`: fast, and keeps `MeanwhileApp` (service,
+  alarms, WorkManager) out of unit tests; the wiring under test is the same as `AppContainer`'s.
+- **Sync contract test** reads the SQL migrations from the repo and checks every synced Room column
+  exists remotely with a compatible type, so a column added on one side only fails CI, not sync.
+- CI: app tests run in their own step without secrets; the run Summary has a per-suite table and
+  each failure's message + stack top (paste-ready for an AI assistant); full reports upload on
+  failure. Supabase deploys only after the SQL and Deno tests pass.
+- `scripts/test-all.sh` runs whatever the local machine supports and skips the rest.

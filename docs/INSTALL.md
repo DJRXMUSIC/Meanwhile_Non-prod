@@ -169,3 +169,8 @@ the exported `ai_calls` CSV shows `fallback_used = true`. Restore the key afterw
 The nightly learn cycle (1 am), morning report, overnight-highs check (6 am) and stats need no extra
 setup beyond **Exact alarms** in the setup checklist and the AI keys above. The Supabase analysis
 views are applied by the same **supabase** workflow; how to query them is in `docs/ANALYSIS.md`.
+
+Learning runs on its own (Settings → **Learning** to see it or switch to *Ask me first*).
+
+**If something looks wrong:** Settings → Diagnostics → **Copy for AI**, then paste into your AI
+coding assistant (it says what the app is and where the code lives). Nothing secret is in it.

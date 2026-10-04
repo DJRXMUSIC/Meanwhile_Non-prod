@@ -5,8 +5,10 @@ Decisions not covered by the spec are logged in [`docs/DECISIONS.md`](docs/DECIS
 whenever you choose something the spec leaves open.
 
 ## Principles (spec §1)
-1. **Danny is the gate.** AI may propose anything; nothing changes the profile or is logged as a dose
-   until Danny accepts or edits it.
+1. **Danny is the gate.** Nothing is logged as a dose until Danny logs it. Learned profile changes
+   apply automatically only as far as his Learning autonomy setting allows (default Automatic, at his
+   request — 1.3); each is journaled, notified, judged on later outcomes (auto-reverted when worse)
+   and one-tap undoable. Everything else the AI proposes waits for him.
 2. **Not designed for caution.** No hidden dampening, extra caps or "are you sure" friction beyond the spec.
 3. **Dose math is deterministic local code** (`domain/`). The AI never computes a dose; NBA works offline.
 4. **Speed and reliability over battery.** Keep services alive; never skip data.
@@ -23,6 +25,12 @@ whenever you choose something the spec leaves open.
 - `.github/workflows/android.yml` — build, test, sign, publish GitHub Release.
 - Legacy PWA files (`src/`, `public/`, `netlify/`, `package.json`, …) are from an earlier project and
   are not part of MeanwhileV4.
+
+## Testing & logging
+- All suites: `scripts/test-all.sh` (skips what the machine can't run). Details: `docs/TESTING.md`.
+- App tests use `app/src/test/.../testing/TestEnv.kt` (real wiring, in-memory Room, Robolectric).
+- Log through `app.meanwhile.log.AppLog` (not `android.util.Log`) so it reaches the diagnostics
+  report Danny shares with AI assistants. Never log keys, tokens or emails.
 
 ## Building
 - Domain only (works offline from Google Maven): `./gradlew -p domain test`.

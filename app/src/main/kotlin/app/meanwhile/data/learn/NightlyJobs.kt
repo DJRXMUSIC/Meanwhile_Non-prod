@@ -132,7 +132,10 @@ class NightlyJobs(
     /** Spec §11.4: BG at +2/+3/+4 h and min/max over 4 h for each logged rapid dose. */
     suspend fun tagOutcomes(now: Instant = Instant.now()): Unit = outcomeLock.withLock {
         val tagged = db.outcomes().taggedDoseIds().toSet()
-        val doses = db.doses().since(now.minus(Duration.ofHours(48)).toEpochMilli())
+        // As far back as learning looks: after days without the app running, every dose still gets
+        // its outcome (xDrip+ back-fills the readings) and becomes a lesson.
+        val lookbackDays = maxOf(2, profiles.current().profile.learning.lookbackDays).toLong()
+        val doses = db.doses().since(now.minus(Duration.ofDays(lookbackDays)).toEpochMilli())
             .filter { it.insulin == "rapid" && it.units > 0 && it.id !in tagged && Outcomes.ready(Instant.ofEpochMilli(it.givenAt), now) }
         if (doses.isEmpty()) return@withLock
         val readings = cgm.recent(Instant.ofEpochMilli(doses.minOf { it.givenAt }))

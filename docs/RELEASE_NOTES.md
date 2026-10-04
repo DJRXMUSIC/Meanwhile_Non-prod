@@ -1,9 +1,34 @@
-## MeanwhileV4 1.2 — runs itself
+## MeanwhileV4 1.3 — learns all day
 
 First complete build. Install: download the APK below → open → allow "install unknown apps" for your browser
 (or point Obtainium at this repo — see `docs/INSTALL.md`).
 
-### New in 1.2
+### New in 1.3
+- **Learns from every dose, all day.** About 4 hours after each logged dose the app measures where
+  you actually landed and works out what the dose *should* have been. Once three clean meals agree
+  (no other food or insulin muddying the result), it nudges your ICR, ISF or caffeine units halfway
+  toward what they point to — the same afternoon, offline, no AI needed. The AI reviews the new
+  lessons mid-day too, not just at 1 am, and looks for what code can't see (time-of-day patterns,
+  factor weights, fat/protein, new factors).
+- **Checks its own work.** Every learned change is watched over the next meals: if your results got
+  worse it's reverted on its own; a severe low (< 54) after a change toward more insulin reverts it
+  immediately. You get a quiet notification either way.
+- **Automatic, your way.** Settings → **Learning** shows what it learned, the evidence behind each
+  number, what's still being judged, and a one-tap **Undo**. Choose **Automatic** (default),
+  **Automatic for factors** (ICR/ISF/target wait for you) or **Ask me first**. Every threshold is
+  editable in Profile → Learning.
+- **Everything is written down.** A learning journal (synced, append-only) records each lesson,
+  change, verdict and AI review; the morning report lists what was learned overnight.
+- **Problems are easy to hand to an AI.** Settings → Diagnostics → **Copy for AI** puts one report on
+  the clipboard — app version, phone, what's healthy and what isn't, every recent error with its
+  stack trace, failed AI calls, the learning state and the log — with keys, tokens and emails
+  stripped. Paste it into any AI coding assistant. **Share** sends it as a file; **Log** shows the
+  raw app log. A badge shows how many warnings/errors happened in the last day.
+- **Much bigger test suite** behind every build: database migrations, sync, dose logging, CGM
+  intake, the learning loop and diagnostics are tested on every push, alongside the dose-engine golden
+  tests and the Supabase security rules.
+
+### From 1.2
 - **Faster forever:** dose calculations no longer slow down as months of profile history accumulate.
 - **Self-healing:** a 15-minute watchdog restarts the CGM service if Android kills it and catches up
   missed work — even with the app closed, even offline.

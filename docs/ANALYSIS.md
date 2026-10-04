@@ -40,6 +40,7 @@ date range — works offline, from the local copy.
 | `ai_calls` | AI request | `job`, `provider`, `model`, `latency_ms`, `fallback_used`, `validation`, `error`, `request_summary`, `response` |
 | `inputs` | thing you said or typed | `raw_text`, `via`, `path_taken` (offline / AI), `router_result` |
 | `feedback` | app note or dose feedback | `text`, `context` |
+| `learning_log` | learning journal entry | `kind` (`lessons`, `applied`, `proposed`, `kept`, `reverted`, `revert_proposed`, `undone`, `ai_review`, `error`), `summary`, `details` (lessons with their measured errors, the evidence for a change, the before/after evaluation), `supersedes_id` (a verdict points at the change it closes) |
 
 Nothing is ever updated or deleted; a correction is a new row. `seq` is the server's insertion order.
 
@@ -62,6 +63,7 @@ counts until the next, gaps excluded). With a steady 5-minute feed they agree to
 | `v_tir_by_weekday` | all-time, per weekday |
 | `v_proposal_outcomes` | every proposal: carbs, BG, proposed vs given, `follow` (`followed` / `overridden` / `not_logged`), override reasons, outcome of the first injection |
 | `v_ai_calls_by_model` | AI calls per provider / model / job: ok / invalid / error counts, fallbacks, mean latency |
+| `v_learned_changes` | every learned profile change: path, old → new, evidence, and its `outcome` (`kept`, `reverted`, `undone`, `revert_proposed` or `under_evaluation`) with the reason |
 
 ## 4. Example queries
 
@@ -164,6 +166,27 @@ select recorded_at, description,
 from meals
 where is_estimate
 order by recorded_at desc;
+```
+
+**What the app learned, and whether it stuck**
+
+```sql
+select applied_local, path, old_value, new_value, outcome, outcome_reason, evidence
+from v_learned_changes order by applied_at desc;
+```
+
+**Every lesson: how far each dose landed from target** (one row per dose, from the learning journal)
+
+```sql
+select to_timestamp((l ->> 'atMillis')::bigint / 1000.0) at time zone meanwhile_tz() as at_local,
+       l ->> 'kind' as kind, (l ->> 'carbsG')::numeric as carbs,
+       (l ->> 'unitsGiven')::numeric as given, (l ->> 'unitsNeeded')::numeric as needed,
+       (l ->> 'endBg')::int as end_bg, (l ->> 'wentLow')::boolean as went_low,
+       (l ->> 'clean')::boolean as clean, l ->> 'excludedBecause' as excluded_because,
+       (l ->> 'impliedIcr')::numeric as implied_icr, (l ->> 'impliedIsf')::numeric as implied_isf
+from learning_log, jsonb_array_elements(details -> 'lessons') l
+where kind = 'lessons'
+order by at_local desc;
 ```
 
 ## 5. Adding your own views
