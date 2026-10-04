@@ -1,9 +1,18 @@
-## MeanwhileV4 1.0 — all milestones (M1–M8)
+## MeanwhileV4 1.1 — simpler main screen, color palettes
 
 First complete build. Install: download the APK below → open → allow "install unknown apps" for your browser
 (or point Obtainium at this repo — see `docs/INSTALL.md`).
 
-### New in this build (M8 — stats + polish)
+### New in 1.1
+- **Main screen stripped down** (spec §15): glucose, active factors, the input bar — and a single
+  Settings button. **Tap the big glucose number for Stats**, tap the profile line for the Profile.
+  The sync/AI chips only appear when something needs attention.
+- **17 color palettes** in Settings → Appearance (plus light/dark/system). Glucose colors stay the
+  same in every palette — green/amber/red always mean the same thing.
+- Keyboard **Send** submits the input; the morning report no longer pops up on a fresh install.
+- Settings got shortcuts to Profile & Stats at the top.
+
+### From 1.0 (M8 — stats + polish)
 - **Stats** (bar-chart icon, top of the main screen): time in range today / 7 / 14 / 30 days against the 80% goal
   with your current ≥ 80% streak, below 70 / below 54 / above 180 / above 250, mean, SD, GMI, a daily
   in-range bar for each day, proposals **followed vs overridden** and how each turned out (BG at 3 h, lows and
@@ -39,6 +48,7 @@ First complete build. Install: download the APK below → open → allow "instal
    the sleep check-in and each change to accept / edit / reject.
 7. **Restore:** Settings → Sign out → sign back in (or reinstall) — everything comes back from Supabase.
 8. **Export:** Settings → Data → Export… → pick a date range → **Build export** → share the zip.
-9. **Stats:** tap the bar-chart icon.
+9. **Stats:** tap the big glucose number on the main screen.
+10. **Make it yours:** Settings → Appearance — pick light/dark and one of 17 color palettes.
 
 Dose math is local and deterministic; AI only proposes, you decide.

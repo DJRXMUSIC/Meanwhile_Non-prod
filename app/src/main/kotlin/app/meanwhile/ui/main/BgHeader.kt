@@ -1,5 +1,6 @@
 package app.meanwhile.ui.main
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,9 +53,9 @@ fun rememberBgSnapshot(): BgSnapshot {
 }
 
 @Composable
-fun BgHeader(bg: BgSnapshot, modifier: Modifier = Modifier) {
+fun BgHeader(bg: BgSnapshot, modifier: Modifier = Modifier, onTap: (() -> Unit)? = null) {
     val colors = LocalGlucoseColors.current
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = (if (onTap != null) modifier.clickable(onClick = onTap) else modifier).fillMaxWidth()) {
         if (bg.reading != null && bg.stale) {
             StaleBanner(bg.ageMinutes)
         }
@@ -76,6 +77,7 @@ fun BgHeader(bg: BgSnapshot, modifier: Modifier = Modifier) {
                 else -> buildString {
                     bg.rate?.let { append(String.format(Locale.US, "%+.1f mg/dL/min · ", it)) }
                     append(if ((bg.ageMinutes ?: 0) < 1) "just now" else "${bg.ageMinutes} min ago")
+                    if (onTap != null) append("  ·  stats ›")
                 }
             },
             style = MaterialTheme.typography.bodyMedium,

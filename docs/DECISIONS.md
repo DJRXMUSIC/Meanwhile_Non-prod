@@ -248,3 +248,17 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - **Known limits:** a malicious app could still feed fake readings while xDrip+'s web service is off,
   and anyone with the phone unlocked can use the app — there is no app lock (not in the spec).
 
+## UI simplification & palettes (1.1)
+- **Main screen = glucose + factors + input + one Settings button** (spec §15 taken literally). Stats
+  opens by tapping the BG number (hinted with "stats ›"), the Profile by tapping the profile callout;
+  both also have buttons at the top of Settings. The sync and AI chips are attention-only — quiet
+  when everything works.
+- **Palettes:** 17 options (Settings → Appearance). "Teal" is hand-tuned; the others are derived from
+  a hue by one generator so light and dark both stay readable. Glucose colors are not themeable —
+  in-range/high/low must always read the same (spec §15).
+- Keyboard Send submits (same as the send button; the spoken transcript still requires an explicit
+  send per spec §9.1 — it stays editable first).
+- The morning report auto-opens only once there is CGM data, so a fresh install isn't greeted with an
+  empty report.
+- The bar-chart drawable stays in the repo though the top bar no longer uses it.
+

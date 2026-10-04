@@ -1,5 +1,6 @@
 package app.meanwhile.ui.main
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -282,13 +283,17 @@ private fun profileFor(card: NbaCard): Profile =
     }
 
 @Composable
-fun ProfileCallout(label: String, version: app.meanwhile.data.db.ProfileVersionEntity?, queued: Int = 0) {
+fun ProfileCallout(label: String, version: app.meanwhile.data.db.ProfileVersionEntity?, queued: Int = 0, onClick: (() -> Unit)? = null) {
     val text = buildString {
         append("Profile $label")
         if (version != null) append(" · updated ${relativeTime(version.createdAt)} by ${sourceLabel(version.source)}")
         if (queued > 0) append(" · $queued AI refinement${if (queued == 1) "" else "s"} queued")
+        if (onClick != null) append(" ›")
     }
-    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
+    )
 }
 
 fun sourceLabel(source: String) = when (source) {

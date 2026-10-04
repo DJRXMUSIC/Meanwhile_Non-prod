@@ -1,6 +1,22 @@
 package app.meanwhile.ui.settings
 
 import app.meanwhile.ui.common.rememberSafeScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import app.meanwhile.ui.theme.Palettes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +49,7 @@ import app.meanwhile.format.relativeTime
 import app.meanwhile.ui.nav.Routes
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val c = LocalAppContainer.current
@@ -47,6 +64,17 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val appSettings by c.settings.settings.collectAsStateWithLifecycle(initialValue = null)
 
     ScreenScaffold(title = "Settings", onBack = onBack) {
+        SectionCard("Profile & stats") {
+            Text(
+                "Also on the main screen: tap the glucose number for stats, the profile line for the profile.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = { onOpen(Routes.PROFILE) }) { Text("Profile & factors") }
+                Button(onClick = { onOpen(Routes.STATS) }) { Text("Stats") }
+            }
+        }
+
         SectionCard("Account") {
             when (val a = auth) {
                 AuthState.NotConfigured -> Text(
@@ -115,12 +143,44 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
 
         appSettings?.let { st ->
             SectionCard("Appearance") {
-                ThemeMode.entries.forEach { mode ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = st.themeMode == mode, onClick = { scope.launch { c.settings.update { it.copy(themeMode = mode) } } })
-                        Text(mode.label)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = st.themeMode == mode,
+                            onClick = { scope.launch { c.settings.update { it.copy(themeMode = mode) } } },
+                            label = { Text(mode.label) },
+                        )
                     }
                 }
+                val dark = when (st.themeMode) {
+                    ThemeMode.DARK -> true
+                    ThemeMode.LIGHT -> false
+                    else -> isSystemInDarkTheme()
+                }
+                Text("Color palette", style = MaterialTheme.typography.labelMedium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Palettes.all.forEach { p ->
+                        val selected = st.palette == p.id
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(p.swatch(dark))
+                                .border(
+                                    width = if (selected) 3.dp else 1.dp,
+                                    color = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.outline,
+                                    shape = CircleShape,
+                                )
+                                .clickable { scope.launch { c.settings.update { it.copy(palette = p.id) } } },
+                        ) {
+                            if (selected) {
+                                Icon(Icons.Filled.Check, contentDescription = "${p.label} (selected)", tint = Color.White)
+                            }
+                        }
+                    }
+                }
+                Text(Palettes.byId(st.palette).label, style = MaterialTheme.typography.bodySmall)
             }
         }
 

@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
                     )
                     onDispose {}
                 }
-                MeanwhileTheme(darkTheme = dark) {
+                MeanwhileTheme(darkTheme = dark, paletteId = settings?.palette ?: "teal") {
                     AppRoot(openRequest = openRequest, onOpenHandled = { openRequest = null })
                 }
             }

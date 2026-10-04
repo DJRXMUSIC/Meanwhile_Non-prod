@@ -50,6 +50,8 @@ data class AppSettings(
     val authSkipped: Boolean = false,
     val setupPromptsShown: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** Color palette id (ui.theme.Palettes); unknown ids fall back to the default. */
+    val palette: String = "teal",
 ) {
     companion object {
         const val DEFAULT_XDRIP_URL = "http://127.0.0.1:17580"
@@ -79,6 +81,7 @@ class SettingsStore(context: Context) {
         val authSkipped = booleanPreferencesKey("auth_skipped")
         val setupPromptsShown = booleanPreferencesKey("setup_prompts_shown")
         val themeMode = stringPreferencesKey("theme_mode")
+        val palette = stringPreferencesKey("theme_palette")
         val syncLastSuccess = longPreferencesKey("sync_last_success")
         val syncLastAttempt = longPreferencesKey("sync_last_attempt")
         val syncLastError = stringPreferencesKey("sync_last_error")
@@ -99,6 +102,7 @@ class SettingsStore(context: Context) {
         authSkipped = this[Keys.authSkipped] ?: false,
         setupPromptsShown = this[Keys.setupPromptsShown] ?: false,
         themeMode = ThemeMode.fromWire(this[Keys.themeMode]),
+        palette = this[Keys.palette] ?: "teal",
     )
 
     val settings: Flow<AppSettings> = store.data.map { it.toSettings() }
@@ -119,6 +123,7 @@ class SettingsStore(context: Context) {
             p[Keys.authSkipped] = new.authSkipped
             p[Keys.setupPromptsShown] = new.setupPromptsShown
             p[Keys.themeMode] = new.themeMode.wire
+            p[Keys.palette] = new.palette
         }
     }
 

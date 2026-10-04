@@ -19,10 +19,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -49,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -81,7 +83,8 @@ fun MainScreen(onOpen: (String) -> Unit) {
         if (!vm.morningPrompted) {
             vm.morningPrompted = true
             val (date, _) = c.nightly.nightOf()
-            if (!c.nightly.morningSeen(date)) onOpen(Routes.MORNING)
+            // Not on a fresh install: the report is pointless until there's at least one reading.
+            if (!c.nightly.morningSeen(date) && c.cgm.latestNow() != null) onOpen(Routes.MORNING)
         }
     }
 
@@ -89,11 +92,11 @@ fun MainScreen(onOpen: (String) -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Meanwhile") },
+                // One button (spec §15: keep the main screen minimal). The chips only appear when
+                // something needs attention; BG opens Stats, the profile line opens Profile.
                 actions = {
                     AiIndicator()
                     SyncIndicator(onClick = { onOpen(Routes.SETTINGS) })
-                    IconButton(onClick = { onOpen(Routes.STATS) }) { Icon(painterResource(R.drawable.ic_stats), contentDescription = "Stats") }
-                    IconButton(onClick = { onOpen(Routes.PROFILE) }) { Icon(Icons.Filled.Person, contentDescription = "Profile") }
                     IconButton(onClick = { onOpen(Routes.SETTINGS) }) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
                 },
             )
@@ -117,9 +120,9 @@ fun MainScreen(onOpen: (String) -> Unit) {
                     )
                 }
             }
-            BgHeader(rememberBgSnapshot())
+            BgHeader(rememberBgSnapshot(), onTap = { onOpen(Routes.STATS) })
             LiveStatus(live, onOpen)
-            ProfileCallout(profileState.versionLabel, profileState.version, queued)
+            ProfileCallout(profileState.versionLabel, profileState.version, queued, onClick = { onOpen(Routes.PROFILE) })
             pendingSeconds.forEach { p -> PendingSecondCard(p, now.toEpochMilli(), vm) }
             if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             vm.session?.let { s ->
@@ -197,6 +200,8 @@ private fun InputBar(vm: MainViewModel) {
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("“60 carbs 20 fat”, “had a coffee”, “took 6 units”…") },
                     maxLines = 4,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { if (vm.text.isNotBlank() && !vm.busy) vm.submit() }),
                 )
                 IconButton(enabled = vm.text.isNotBlank() && !vm.busy, onClick = vm::submit) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")

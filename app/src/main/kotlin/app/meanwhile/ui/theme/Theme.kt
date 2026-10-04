@@ -1,6 +1,7 @@
 package app.meanwhile.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -43,7 +44,7 @@ private val DarkGlucose = GlucoseColors(
     aiProposed = Color(0xFFB39DDB),
 )
 
-private val LightColors = lightColorScheme(
+private val TealLight = lightColorScheme(
     primary = Color(0xFF0F5E5F),
     onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFB4ECEB),
@@ -69,7 +70,7 @@ private val LightColors = lightColorScheme(
     onErrorContainer = Color(0xFF410002),
 )
 
-private val DarkColors = darkColorScheme(
+private val TealDark = darkColorScheme(
     primary = Color(0xFF80D5D4),
     onPrimary = Color(0xFF003737),
     primaryContainer = Color(0xFF004F50),
@@ -97,14 +98,111 @@ private val DarkColors = darkColorScheme(
 
 val LocalGlucoseColors = staticCompositionLocalOf { LightGlucose }
 
+/** One selectable color palette: a full light and dark Material scheme. */
+@Immutable
+data class Palette(val id: String, val label: String, val light: ColorScheme, val dark: ColorScheme) {
+    /** Color shown on the picker swatch. */
+    fun swatch(dark: Boolean): Color = if (dark) this.dark.primary else light.primary
+}
+
+/**
+ * The palette list (Settings → Appearance). "Teal" is the hand-tuned default; the rest are derived
+ * from a hue so all of them stay readable in light and dark. Glucose colors (in range / high / low)
+ * are deliberately NOT part of the palette — they always mean the same thing.
+ */
+object Palettes {
+    val all: List<Palette> = listOf(
+        Palette("teal", "Teal", TealLight, TealDark),
+        hue("ocean", "Ocean", 215f),
+        hue("sky", "Sky", 197f),
+        hue("indigo", "Indigo", 245f),
+        hue("violet", "Violet", 268f),
+        hue("lavender", "Lavender", 285f, sat = 0.38f),
+        hue("magenta", "Magenta", 322f),
+        hue("rose", "Rose", 345f, sat = 0.45f),
+        hue("crimson", "Crimson", 2f, sat = 0.48f),
+        hue("sunset", "Sunset", 25f),
+        hue("amber", "Amber", 42f),
+        hue("olive", "Olive", 78f, sat = 0.40f),
+        hue("forest", "Forest", 132f),
+        hue("mint", "Mint", 160f),
+        hue("slate", "Slate", 210f, sat = 0.16f),
+        hue("espresso", "Espresso", 22f, sat = 0.28f),
+        hue("mono", "Mono", 0f, sat = 0f),
+    )
+
+    fun byId(id: String?): Palette = all.firstOrNull { it.id == id } ?: all.first()
+
+    /** Light + dark Material schemes derived from one hue (tertiary shifted 60° for contrast). */
+    private fun hue(id: String, label: String, h: Float, sat: Float = 0.55f): Palette {
+        fun c(hh: Float, s: Float, l: Float) = Color.hsl((hh % 360f + 360f) % 360f, s.coerceIn(0f, 1f), l)
+        val t = h + 60f
+        val light = lightColorScheme(
+            primary = c(h, sat, 0.33f),
+            onPrimary = Color(0xFFFFFFFF),
+            primaryContainer = c(h, sat * 1.2f, 0.88f),
+            onPrimaryContainer = c(h, sat * 1.45f, 0.12f),
+            secondary = c(h, sat * 0.4f, 0.35f),
+            onSecondary = Color(0xFFFFFFFF),
+            secondaryContainer = c(h, sat * 0.55f, 0.86f),
+            onSecondaryContainer = c(h, sat * 0.7f, 0.11f),
+            tertiary = c(t, sat * 0.55f, 0.38f),
+            onTertiary = Color(0xFFFFFFFF),
+            tertiaryContainer = c(t, sat * 0.8f, 0.88f),
+            onTertiaryContainer = c(t, sat * 0.9f, 0.12f),
+            background = c(h, 0.14f, 0.98f),
+            onBackground = c(h, 0.10f, 0.10f),
+            surface = c(h, 0.14f, 0.98f),
+            onSurface = c(h, 0.10f, 0.10f),
+            surfaceVariant = c(h, 0.18f, 0.88f),
+            onSurfaceVariant = c(h, 0.10f, 0.28f),
+            surfaceContainer = c(h, 0.14f, 0.94f),
+            surfaceContainerHigh = c(h, 0.14f, 0.91f),
+            outline = c(h, 0.08f, 0.47f),
+            error = Color(0xFFBA1A1A),
+            errorContainer = Color(0xFFFFDAD6),
+            onErrorContainer = Color(0xFF410002),
+        )
+        val dark = darkColorScheme(
+            primary = c(h, sat * 0.85f, 0.72f),
+            onPrimary = c(h, sat, 0.15f),
+            primaryContainer = c(h, sat * 0.85f, 0.25f),
+            onPrimaryContainer = c(h, sat, 0.85f),
+            secondary = c(h, sat * 0.30f, 0.72f),
+            onSecondary = c(h, sat * 0.4f, 0.17f),
+            secondaryContainer = c(h, sat * 0.35f, 0.26f),
+            onSecondaryContainer = c(h, sat * 0.45f, 0.86f),
+            tertiary = c(t, sat * 0.55f, 0.74f),
+            onTertiary = c(t, sat * 0.6f, 0.17f),
+            tertiaryContainer = c(t, sat * 0.45f, 0.28f),
+            onTertiaryContainer = c(t, sat * 0.6f, 0.88f),
+            background = c(h, 0.12f, 0.07f),
+            onBackground = c(h, 0.06f, 0.88f),
+            surface = c(h, 0.12f, 0.07f),
+            onSurface = c(h, 0.06f, 0.88f),
+            surfaceVariant = c(h, 0.12f, 0.28f),
+            onSurfaceVariant = c(h, 0.08f, 0.78f),
+            surfaceContainer = c(h, 0.12f, 0.11f),
+            surfaceContainerHigh = c(h, 0.12f, 0.15f),
+            outline = c(h, 0.06f, 0.57f),
+            error = Color(0xFFFFB4AB),
+            errorContainer = Color(0xFF93000A),
+            onErrorContainer = Color(0xFFFFDAD6),
+        )
+        return Palette(id, label, light, dark)
+    }
+}
+
 @Composable
 fun MeanwhileTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    paletteId: String = "teal",
     content: @Composable () -> Unit,
 ) {
+    val palette = Palettes.byId(paletteId)
     CompositionLocalProvider(LocalGlucoseColors provides if (darkTheme) DarkGlucose else LightGlucose) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = if (darkTheme) palette.dark else palette.light,
             typography = Typography(),
             content = content,
         )

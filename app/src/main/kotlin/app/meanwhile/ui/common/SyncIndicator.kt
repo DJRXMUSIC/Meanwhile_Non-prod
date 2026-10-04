@@ -9,7 +9,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.meanwhile.data.remote.AuthState
 import app.meanwhile.data.settings.SyncStatus
 
-/** Small sync status chip (spec §12.1): last successful sync and items pending. */
+/**
+ * Sync chip (spec §12.1), shown only when something needs attention — all good means no chip, which
+ * keeps the main screen quiet. Full status is in Settings → Cloud sync.
+ */
 @Composable
 fun SyncIndicator(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalAppContainer.current
@@ -17,12 +20,11 @@ fun SyncIndicator(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val status by c.settings.syncStatus.collectAsStateWithLifecycle(initialValue = SyncStatus())
     val auth by c.auth.state.collectAsStateWithLifecycle()
     val label = when {
-        auth is AuthState.NotConfigured -> "Local only"
-        auth !is AuthState.SignedIn -> "Sync off"
-        status.failingSince != null -> "Sync failing · $pending"
-        pending > 0 -> "$pending pending"
-        status.lastSuccessAt != null -> "Synced"
-        else -> "Not synced yet"
-    }
+        auth is AuthState.NotConfigured -> null // this build has no cloud at all; Settings explains
+        auth !is AuthState.SignedIn -> "Not backed up"
+        status.failingSince != null -> "Sync failing"
+        pending > 0 -> "$pending to sync"
+        else -> null
+    } ?: return
     AssistChip(onClick = onClick, label = { Text(label) }, modifier = modifier)
 }
