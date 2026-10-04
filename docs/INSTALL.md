@@ -153,4 +153,8 @@ the repo, the APK, logs or chat.
 the exported `ai_calls` CSV shows `fallback_used = true`. Restore the key afterwards.
 
 ---
-Later milestones add the nightly learn cycle (M7) — it gets its own section here if anything is needed.
+## 8. Nothing else to set up
+
+The nightly learn cycle (1 am), morning report, overnight-highs check (6 am) and stats need no extra
+setup beyond **Exact alarms** in the setup checklist and the AI keys above. The Supabase analysis
+views are applied by the same **supabase** workflow; how to query them is in `docs/ANALYSIS.md`.
