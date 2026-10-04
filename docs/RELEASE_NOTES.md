@@ -1,16 +1,14 @@
-## What to try (M6 — AI layer)
+## What to try (M7 — nightly learn cycle + morning report)
 
-Setup: `docs/INSTALL.md` §7 — add your Gemini and Anthropic keys as Supabase secrets yourself,
-then re-run the **supabase** workflow to deploy the `ai` Edge Function.
-
-1. Online, say **"two slices of pepperoni pizza and a coffee"**: the path line shows `ai router`;
-   you get an **AI proposal** (caffeine +1 u) to Accept / edit / Reject, and an **AI estimate** of the
-   pizza's carbs/fat/protein to confirm or edit before the dose is calculated.
-2. **"ran 4 miles hard, finished 20 minutes ago"** → the AI proposes an exercise weight and window;
-   edit the weight before accepting if you like. Every AI value is shown in purple until accepted.
-3. Offline (airplane mode), say **"had two beers"** → the default weight applies immediately and an AI
-   refinement is queued. Turn data back on → a notification "AI refinement ready" → review each
-   change (Accept / Edit / Reject).
-4. **Settings → AI provider**: switch between Gemini first / Claude first / only one. The top bar
-   shows **AI offline** whenever the AI can't be reached — dose math keeps working regardless.
-5. Fallback test (INSTALL §7): break the Gemini key; requests still succeed via Claude.
+1. Use the app normally for a day (meals, factors, doses). Leave the phone on overnight.
+2. At 1 am the learn cycle runs (silently). On your first open after that, the **Morning report**
+   appears:
+   - **How did you sleep?** Good / OK / Poor → applies the sleep factor immediately.
+   - **Proposed changes** from the learn cycle, each with old → new and the evidence — Accept, Edit or
+     Reject each, or Accept all → **Apply decisions** creates a new profile version (Profile → History).
+   - **Yesterday at a glance**: time in range, below 70, above 180, doses, proposals followed vs overridden.
+3. If the phone was off or offline at 1 am, opening the app runs the learn cycle first (or tells you
+   yesterday's profile was carried forward, with **Retry now**).
+4. At 6 am, overnight highs are checked; if you spent ≥ 3 h above 180 between 10 pm and 6 am, the
+   overnight-highs factor (F11) is added until 1 am (shown on the main screen and in the report).
+5. Every logged dose gets BG outcomes at +2/+3/+4 h (exported in the `outcomes` table).

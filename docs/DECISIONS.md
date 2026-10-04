@@ -8,7 +8,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - M3 — CGM intake + foreground service: done (CI green)
 - M4 — dose engine + IOB: done (CI green, golden tests in CI)
 - M5 — input, routing, NBA, dose logging, profile: done (CI green)
-- M6 — AI layer: in progress
+- M6 — AI layer: done (CI green; Deno tests in the supabase workflow)
+- M7 — learn cycle + morning report: in progress
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -167,3 +168,25 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   becomes a **pending** version + "AI refinement ready" notification → review screen (accept / edit /
   reject each change). Decisions are re-applied onto the *current* profile.
 - **"AI offline" indicator** = configured but no network, no live session, or the last call failed.
+
+## Learn cycle & morning report (M7)
+- **1 am:** an exact alarm enqueues a WorkManager job (the AI call can take ~2 min). The night is
+  identified by the date of the most recent reset; the payload covers the 24 h ending at that reset
+  plus a 14-day summary (daily TIR, hourly means, proposals followed/overridden, override reasons,
+  dose outcomes) and the profile *after* the reset.
+- **The 1 am reset is the window rules themselves** (activations expire at the reset); no extra
+  "reset" version is written — expired activations are pruned when the next version is saved.
+- **Result → pending version** (`learn_cycle`) holding path-addressed changes with evidence. Changes
+  that don't apply cleanly to the current profile are dropped. Observations are shown in the report.
+- **Failures:** if the wall clock ran out on one provider, the other is tried alone; a failed night is
+  retried automatically when the network returns and on demand from the morning report; otherwise the
+  report says yesterday's profile was carried forward. The 1 am notification is silent.
+- **Morning report** opens on the first app open after the reset (catch-up runs the learn cycle first
+  if it hasn't completed). "Done" marks it seen; "Not now" shows it again next open.
+- **Sleep check-in** applies F8 immediately as a `sleep_checkin` version and can be changed.
+- **Yesterday at a glance** = the previous calendar day. "Followed" = every injection logged for the
+  proposal matched what it proposed and the total equals the proposal; edits/skips = overridden.
+- **F11** is computed by code at 6 am (exact alarm), with catch-up from app start and the CGM service
+  every 15 min; a weight of 1.00 writes no version.
+- **Outcome tagging** runs every 15 min (service), at app start and before each learn cycle; doses
+  wait up to 24 h for back-filled readings before an all-null outcome is stored.

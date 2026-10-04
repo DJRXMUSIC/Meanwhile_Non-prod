@@ -19,6 +19,8 @@ import app.meanwhile.data.input.AiHooks
 import app.meanwhile.data.input.FactorUpdater
 import app.meanwhile.data.input.InputProcessor
 import app.meanwhile.data.input.NbaService
+import app.meanwhile.data.learn.LearnWorker
+import app.meanwhile.data.learn.NightlyJobs
 import app.meanwhile.data.profile.ProfileRepository
 import app.meanwhile.data.db.FeedbackEntity
 import app.meanwhile.data.export.CsvExporter
@@ -94,12 +96,24 @@ class AppContainer(val app: Application) {
     val aiHooks: AiHooks get() = if (supabase != null) aiHooksImpl else object : AiHooks {}
     val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync) { aiHooks } }
 
+    val nightly: NightlyJobs by lazy { NightlyJobs(app, db, records, profiles, cgm, ai, settings, ::requestSync) }
+
     fun requestSync() = SyncWorker.requestNow(app)
+
+    /** 1 am learn cycle and 6 am overnight-highs alarms (re-armed after each fire, boot and app start). */
+    suspend fun scheduleDailyAlarms() {
+        val p = profiles.current().profile
+        Alarms.scheduleDaily(app, Alarms.ACTION_LEARN, p.resetHour)
+        Alarms.scheduleDaily(app, Alarms.ACTION_F11, (p.factor("F11")?.params?.get("endHour") ?: 6.0).toInt())
+    }
 
     /** Called by [app.meanwhile.service.BootReceiver]: re-arm everything time-based. */
     fun onBootOrUpdate() {
         requestSync()
-        appScope.launch { rearmAlarms() }
+        appScope.launch {
+            rearmAlarms()
+            scheduleDailyAlarms()
+        }
     }
 
     /** Re-arms split reminders that are still pending (alarms don't survive reboot). */
@@ -107,14 +121,28 @@ class AppContainer(val app: Application) {
         nba.pendingSeconds().forEach { Alarms.scheduleSplit(app, it.proposalId, it.units, it.dueAt) }
     }
 
-    /** Non-split alarms (M7 adds the 1 am learn cycle and 6 am F11). */
+    /** Daily alarms (spec §11.1). The learn cycle runs in a worker (AI call up to ~2 min). */
     suspend fun onAlarm(action: String?) {
-        // Filled in by later milestones.
+        when (action) {
+            Alarms.ACTION_LEARN -> LearnWorker.enqueue(app)
+            Alarms.ACTION_F11 -> runCatching { nightly.overnightIfNeeded() }
+        }
+        scheduleDailyAlarms()
+    }
+
+    /** Periodic housekeeping from the CGM service: outcome tagging and a missed 6 am F11. */
+    suspend fun housekeeping() {
+        runCatching { nightly.tagOutcomes() }
+        runCatching { nightly.overnightIfNeeded() }
     }
 
     fun start() {
         CgmService.start(app)
-        appScope.launch { rearmAlarms() }
+        appScope.launch {
+            rearmAlarms()
+            scheduleDailyAlarms()
+            housekeeping()
+        }
         SyncWorker.schedulePeriodic(app)
         requestSync()
         // Back online (or signed in): run AI calls queued while offline (spec §9.4).

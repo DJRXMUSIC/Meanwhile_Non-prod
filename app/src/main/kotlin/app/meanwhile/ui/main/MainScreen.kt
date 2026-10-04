@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -76,6 +77,13 @@ fun MainScreen(onOpen: (String) -> Unit) {
     val now by rememberNow()
     val live by produceState<DoseContext?>(null, now, vm.tick, profileState.version?.id) { value = c.doseContext.build() }
     val pendingSeconds by produceState(emptyList<PendingSecond>(), now, vm.tick) { value = c.nba.pendingSeconds() }
+    LaunchedEffect(Unit) {
+        if (!vm.morningPrompted) {
+            vm.morningPrompted = true
+            val (date, _) = c.nightly.nightOf()
+            if (!c.nightly.morningSeen(date)) onOpen(Routes.MORNING)
+        }
+    }
 
     Scaffold(
         topBar = {

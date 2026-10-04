@@ -20,6 +20,7 @@ import app.meanwhile.ui.auth.AuthScreen
 import app.meanwhile.ui.debug.DoseDebugScreen
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.main.MainScreen
+import app.meanwhile.ui.morning.MorningReportScreen
 import app.meanwhile.ui.profile.EditSettingsScreen
 import app.meanwhile.ui.profile.JsonEditScreen
 import app.meanwhile.ui.profile.ProfileScreen
@@ -41,6 +42,7 @@ object Routes {
     const val PROFILE_VERSION = "profile-version"
     const val PROFILE_JSON = "profile-json"
     const val REVIEW = "review"
+    const val MORNING = "morning"
 
     fun profileVersion(id: String) = "$PROFILE_VERSION/$id"
     fun profileJson(path: String) = "$PROFILE_JSON?path=$path"
@@ -89,6 +91,9 @@ private fun AppNavHost(openRequest: String?, onOpenHandled: () -> Unit) {
         }
         composable(Routes.DEBUG_DOSE) {
             DoseDebugScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.MORNING) {
+            MorningReportScreen(onDone = { nav.popBackStack() })
         }
         composable(Routes.PROFILE) {
             ProfileScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate(it) })

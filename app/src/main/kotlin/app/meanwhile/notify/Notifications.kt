@@ -69,7 +69,7 @@ object Notifications {
     }
 
     @SuppressLint("MissingPermission") // checked by canPost
-    fun post(context: Context, id: Int, channel: String, title: String, text: String, destination: String? = null) {
+    fun post(context: Context, id: Int, channel: String, title: String, text: String, destination: String? = null, silent: Boolean = false) {
         if (!canPost(context)) return
         val n = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_stat_drop)
@@ -78,6 +78,7 @@ object Notifications {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(openAppIntent(context, destination, id))
             .setAutoCancel(true)
+            .setSilent(silent)
             .build()
         NotificationManagerCompat.from(context).notify(id, n)
     }

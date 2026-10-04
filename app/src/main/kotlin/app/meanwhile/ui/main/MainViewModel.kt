@@ -33,6 +33,9 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
     var busy by mutableStateOf(false)
         private set
 
+    /** The morning report is offered once per app session. */
+    var morningPrompted = false
+
     /** Bumped after anything that changes doses/profile so dependent views refresh. */
     var tick by mutableIntStateOf(0)
         private set

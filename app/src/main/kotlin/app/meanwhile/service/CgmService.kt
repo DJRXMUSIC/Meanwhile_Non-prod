@@ -53,6 +53,12 @@ class CgmService : Service() {
     private fun run() {
         val c = (application as MeanwhileApp).container
         c.cgmIntake.start(scope)
+        scope.launch {
+            while (true) {
+                delay(15 * 60_000L)
+                c.housekeeping()
+            }
+        }
         val ticker = flow {
             while (true) {
                 emit(Instant.now())

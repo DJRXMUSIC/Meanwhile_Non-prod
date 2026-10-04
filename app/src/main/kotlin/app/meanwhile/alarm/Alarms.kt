@@ -45,6 +45,22 @@ object Alarms {
         }
     }
 
+    const val ACTION_LEARN = "app.meanwhile.alarm.LEARN"
+    const val ACTION_F11 = "app.meanwhile.alarm.F11"
+
+    /** Next [hour]:[minute] local time, exact (spec §11.1: 1 am learn cycle, 6 am F11). */
+    fun scheduleDaily(context: Context, action: String, hour: Int, minute: Int = 0) {
+        val zone = java.time.ZoneId.systemDefault()
+        val now = java.time.ZonedDateTime.now(zone)
+        var next = now.toLocalDate().atTime(hour, minute).atZone(zone)
+        if (!next.isAfter(now)) next = next.plusDays(1)
+        val pi = PendingIntent.getBroadcast(
+            context, action.hashCode(), Intent(context, AlarmReceiver::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        exact(context, next.toInstant().toEpochMilli(), pi)
+    }
+
     fun requestCode(proposalId: String) = proposalId.hashCode() and 0x0FFFFFFF
     fun notificationId(proposalId: String) = app.meanwhile.notify.Notifications.ID_SPLIT_BASE + (requestCode(proposalId) % 100_000)
 }
