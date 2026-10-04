@@ -21,7 +21,8 @@ import androidx.room.RoomDatabase
         AiQueueEntity::class,
     ],
     version = 1,
-    exportSchema = true,
+    // Debug and release KSP run in parallel and raced on the exported schema file; see DECISIONS.
+    exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun cgm(): CgmDao

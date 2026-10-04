@@ -50,6 +50,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - **Poison rows.** If the server rejects a batch for data reasons (400/403/409/422), rows are retried one
   by one and rejects are marked `sync_state = 2` (kept locally, shown in Settings) so one bad row can't
   block the queue.
+- **Room schema export is off.** Debug and release KSP tasks ran in parallel and raced on the same
+  exported JSON file (CI failure). The schema is v1; any later change ships a hand-written Migration.
 - **No foreign keys between tables** on the server: rows may arrive in any order.
 - **Offline session expiry.** supabase-kt drops the session when an expired token can't refresh
   offline; the app remembers the last signed-in user so it keeps working locally and doesn't bounce to
