@@ -10,7 +10,7 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - M5 — input, routing, NBA, dose logging, profile: done (CI green)
 - M6 — AI layer: done (CI green; Deno tests in the supabase workflow)
 - M7 — learn cycle + morning report: done (CI green)
-- M8 — stats + polish: done
+- M8 — stats + polish: done (CI green)
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
