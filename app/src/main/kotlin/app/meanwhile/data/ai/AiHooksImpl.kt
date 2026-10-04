@@ -140,9 +140,20 @@ class AiHooksImpl(
         return dto to out
     }
 
-    private suspend fun recentContext(since: Long): JsonObject = buildJsonObject {
+    private suspend fun recentContext(since: Long): JsonObject {
+        val events = db.factorEvents().since(since)
+        val doses = db.doses().since(since)
+        val outcomes = db.outcomes().since(since)
+        return buildRecent(events, doses, outcomes)
+    }
+
+    private fun buildRecent(
+        events: List<app.meanwhile.data.db.FactorEventEntity>,
+        doses: List<app.meanwhile.data.db.DoseEntity>,
+        outcomes: List<app.meanwhile.data.db.OutcomeEntity>,
+    ): JsonObject = buildJsonObject {
         putJsonArray("factor_events") {
-            db.factorEvents().since(since).forEach { e ->
+            events.forEach { e ->
                 addJsonObject {
                     put("at", isoOf(e.recordedAt)); put("factor_id", e.factorId); put("action", e.action)
                     e.weight?.let { put("weight", it) }; e.unitsAdd?.let { put("units_add", it) }; put("source", e.source)
@@ -151,12 +162,12 @@ class AiHooksImpl(
             }
         }
         putJsonArray("doses") {
-            db.doses().since(since).forEach { d ->
+            doses.forEach { d ->
                 addJsonObject { put("at", isoOf(d.givenAt)); put("insulin", d.insulin); put("units", d.units) }
             }
         }
         putJsonArray("outcomes") {
-            db.outcomes().since(since).forEach { o ->
+            outcomes.forEach { o ->
                 addJsonObject {
                     put("dose_id", o.doseId); o.bg2h?.let { put("bg_2h", it) }; o.bg3h?.let { put("bg_3h", it) }
                     o.bg4h?.let { put("bg_4h", it) }; o.min4h?.let { put("min_4h", it) }; o.max4h?.let { put("max_4h", it) }
