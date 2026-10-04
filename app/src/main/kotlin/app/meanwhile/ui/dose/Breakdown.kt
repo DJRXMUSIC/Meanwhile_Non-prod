@@ -27,8 +27,9 @@ fun Breakdown(input: DoseInput, result: DoseResult, profile: Profile, modifier: 
             if (input.fatG > 0) Line("  Fat ${fmt(input.fatG, 0)} g ÷ ${fmt(profile.meal.fatGPerUnit, 0)}", signed(result.fatUnits))
             if (input.proteinG > 0) Line("  Protein ${fmt(input.proteinG, 0)} g ÷ ${fmt(profile.meal.proteinGPerUnit, 0)}", signed(result.proteinUnits))
         }
-        if (input.bg != null) {
-            Line("Correction (${fmt(input.bg, 0)} − ${fmt(d.target, 0)}) ÷ ISF ${fmt(d.isf, 0)}", signed(result.correction))
+        val bg = input.bg
+        if (bg != null) {
+            Line("Correction (${fmt(bg, 0)} − ${fmt(d.target, 0)}) ÷ ISF ${fmt(d.isf, 0)}", signed(result.correction))
         } else {
             Line("Correction (no BG)", "0.00")
         }
