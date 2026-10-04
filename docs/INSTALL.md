@@ -108,5 +108,22 @@ airplane mode it stays "1 pending"; turn data back on and within a minute it sho
 note appears in Supabase **Table Editor → feedback**. Restore test: uninstall, reinstall, sign in — your
 records come back.
 
+## 6. xDrip+ bridge (M3) — live Eversense readings
+
+Meanwhile reads your CGM from **xDrip+** running on the same phone (xDrip+ bridges the Eversense).
+
+1. In **xDrip+**: ☰ menu → **Settings** → **Inter-app settings**:
+   - **xDrip Web Service** → **On** (Meanwhile polls `http://127.0.0.1:17580/sgv.json` every 60 s).
+     Leave "Open Web Service" off — Meanwhile is on the same phone, no secret needed.
+   - **Broadcast locally** → **On** (instant readings in addition to polling).
+   - **Identify receiver** → type `app.meanwhile.v4` (lets xDrip+ wake Meanwhile even if it was killed).
+2. Install xDrip+ **before** (or reinstall Meanwhile after) so Android grants Meanwhile xDrip's
+   broadcast permission. Polling works either way.
+3. In **Meanwhile**: tap the **Finish setup** card (or Settings → Open setup checklist) and allow
+   Notifications, Unrestricted battery, Exact alarms and Microphone.
+4. Settings → **CGM (xDrip+)** → **Test connection** should show your latest reading.
+
+If you run a different bridge app, tell Claude which one — it can be added as another `CgmSource`.
+
 ---
-Later milestones add xDrip+ (M3) and AI keys (M6) — each gets its own section here.
+Later milestones add AI keys (M6) — it gets its own section here.

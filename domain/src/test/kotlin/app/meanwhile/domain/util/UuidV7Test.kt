@@ -20,4 +20,17 @@ class UuidV7Test {
         val b = UuidV7.string(2_000L)
         assertTrue(a < b)
     }
+
+    @Test
+    fun deterministicIsStableAndValid() {
+        val a = UuidV7.deterministic(1_791_000_000_000L, "cgm:1791000000000")
+        val b = UuidV7.deterministic(1_791_000_000_000L, "cgm:1791000000000")
+        val c = UuidV7.deterministic(1_791_000_300_000L, "cgm:1791000300000")
+        assertEquals(a, b)
+        assertTrue(a != c)
+        val u = java.util.UUID.fromString(a)
+        assertEquals(7, u.version())
+        assertEquals(2, u.variant())
+        assertEquals(1_791_000_000_000L, UuidV7.timestampOf(u))
+    }
 }

@@ -4,7 +4,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 
 ## Status
 - M1 — pipeline + shell: done (CI green; Release published once signing secrets are added)
-- M2 — data layer + Supabase: in progress
+- M2 — data layer + Supabase: done (CI green)
+- M3 — CGM intake + foreground service: in progress
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -57,3 +58,22 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   access token secret, instead of asking Danny to run CLI commands. SQL Editor paste is the fallback.
 - **Sign-ups.** After Danny creates his account he turns sign-ups off in Supabase (the APK and repo are
   public, so the anon key is too).
+
+## CGM & background (M3)
+- **xDrip+ details verified against its source:** web service on `127.0.0.1:17580`, `sgv.json?count=`
+  (max 1000), `api-secret` = SHA-1 hex and only enforced off-loopback; broadcast action
+  `com.eveningoutpost.dexdrip.BgEstimate` sent with receiver permission
+  `com.eveningoutpost.dexdrip.permissions.RECEIVE_BG_ESTIMATE`, slope in mg/dL per ms.
+- **Both feeds, deduped.** Polling (reliable, back-fills) + broadcast (instant). Readings dedupe by
+  timestamp (unique index) and by a deterministic UUIDv7 derived from the timestamp, so restore +
+  back-capture can never create server duplicates.
+- **Trend for the dose engine** = least-squares slope of the last 15 min of readings (mg/dL/min);
+  falls back to the source's delta (sgv `delta`/5 or broadcast slope) when there's too little data.
+- **Foreground service type `specialUse`.** `dataSync` is capped at 6 h/day on Android 15+,
+  `connectedDevice`/`health` need hardware/sensor permissions we don't use. `specialUse` has no time
+  limit and may start from `BOOT_COMPLETED`; Play review doesn't apply to a sideloaded app.
+- **Exact alarms via `USE_EXACT_ALARM`** (granted at install on API 33+), with `SCHEDULE_EXACT_ALARM`
+  for API 31–32. The setup checklist still verifies `canScheduleExactAlarms()`.
+- **Setup checklist** (notifications, unrestricted battery, exact alarms, microphone, xDrip feed)
+  replaces one-shot prompts; the main screen shows a card until everything is granted.
+- **Stale** threshold (15 min) and **poll interval** (60 s) are device settings.

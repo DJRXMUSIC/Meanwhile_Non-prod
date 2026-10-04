@@ -40,6 +40,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     var syncMessage by remember { mutableStateOf<String?>(null) }
     var note by rememberSaveable { mutableStateOf("") }
     var noteMessage by remember { mutableStateOf<String?>(null) }
+    val appSettings by c.settings.settings.collectAsStateWithLifecycle(initialValue = null)
 
     ScreenScaffold(title = "Settings", onBack = onBack) {
         SectionCard("Account") {
@@ -85,6 +86,13 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             }) { Text("Sync now") }
             syncMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
+
+        SectionCard("Setup") {
+            Text("Permissions and background reliability (battery, exact alarms, notifications, microphone).")
+            Button(onClick = { onOpen(Routes.SETUP) }) { Text("Open setup checklist") }
+        }
+
+        appSettings?.let { CgmSettingsSection(it) }
 
         SectionCard("Data") {
             Text("Export any date range as CSV (one file per table, plus a zip of all).")

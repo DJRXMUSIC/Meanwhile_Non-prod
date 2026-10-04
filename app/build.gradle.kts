@@ -95,6 +95,7 @@ dependencies {
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.functions)
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.okhttp)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

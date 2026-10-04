@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.meanwhile.notify.Notifications
+import app.meanwhile.service.CgmService
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.nav.AppRoot
 import app.meanwhile.ui.theme.MeanwhileTheme
@@ -29,6 +30,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Foreground: always allowed to (re)start the CGM service.
+        CgmService.start(this)
     }
 
     override fun onNewIntent(intent: Intent) {

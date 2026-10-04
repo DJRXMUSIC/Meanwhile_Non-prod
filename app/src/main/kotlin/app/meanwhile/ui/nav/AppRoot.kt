@@ -19,12 +19,14 @@ import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.main.MainScreen
 import app.meanwhile.ui.settings.ExportScreen
 import app.meanwhile.ui.settings.SettingsScreen
+import app.meanwhile.ui.setup.SetupScreen
 import kotlinx.coroutines.launch
 
 object Routes {
     const val MAIN = "main"
     const val SETTINGS = "settings"
     const val EXPORT = "export"
+    const val SETUP = "setup"
 }
 
 @Composable
@@ -64,6 +66,9 @@ private fun AppNavHost(openRequest: String?, onOpenHandled: () -> Unit) {
         }
         composable(Routes.EXPORT) {
             ExportScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.SETUP) {
+            SetupScreen(onBack = { nav.popBackStack() })
         }
     }
 }

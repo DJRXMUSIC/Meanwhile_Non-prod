@@ -1,14 +1,13 @@
-## What to try (M2 — data layer + Supabase)
+## What to try (M3 — CGM intake + foreground service)
 
-Setup first (once): `docs/INSTALL.md` §5 — create the Supabase project, add the five secrets,
-re-run the **supabase** and **android** workflows.
+Setup: `docs/INSTALL.md` §6 (turn on xDrip+ Web Service + Broadcast locally, Identify receiver
+`app.meanwhile.v4`), then the in-app **Finish setup** checklist.
 
-1. Install this release and open it. Create your account (email + password) on the first screen,
-   or tap "Use without an account" to stay local-only for now.
-2. **Settings → App note**: save a note. The chip at the top of the main screen shows pending/synced.
-3. Offline test: airplane mode → save another note → "1 pending". Turn data on → it syncs within a
-   minute; check Supabase **Table Editor → feedback**.
-4. **Settings → Export…** → pick dates → **Build export** → **Share zip** (or one table's CSV).
-5. Restore test: uninstall → reinstall → sign in → your notes are back (Export shows them).
-
-Then in Supabase turn off **Allow new users to sign up** (INSTALL §5e).
+1. Open Meanwhile: the main screen shows your BG (color-coded), trend arrow, rate and reading age.
+   A persistent notification shows the same.
+2. New readings appear within ~1 minute of xDrip+ (instantly when broadcasts are on).
+3. Back-fill test: force-stop Meanwhile (long-press icon → App info → Force stop), wait 15+ min,
+   reopen — the gap fills from xDrip+ (Settings → CGM shows "Back-filled N readings").
+4. Stale test: stop xDrip+ for 15+ min → a red banner on the main screen and a "CGM readings are stale"
+   notification.
+5. Reboot the phone: the BG notification comes back by itself.

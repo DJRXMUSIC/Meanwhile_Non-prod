@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -27,14 +29,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import app.meanwhile.R
 import app.meanwhile.ui.common.SyncIndicator
 import app.meanwhile.ui.nav.Routes
-import app.meanwhile.ui.theme.LocalGlucoseColors
-import app.meanwhile.ui.theme.forMgDl
+import app.meanwhile.ui.setup.rememberSetupState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,13 +60,18 @@ fun MainScreen(onOpen: (String) -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = "—",
-                fontSize = 72.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalGlucoseColors.current.forMgDl(null),
-            )
-            Text("mg/dL · waiting for CGM (arrives in M3)", style = MaterialTheme.typography.bodyMedium)
+            val setup = rememberSetupState()
+            if (setup.missing > 0) {
+                Card(onClick = { onOpen(Routes.SETUP) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Finish setup: ${setup.missing} permission${if (setup.missing == 1) "" else "s"} needed " +
+                            "for reliable background operation →",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            BgHeader(rememberBgSnapshot())
             Spacer(Modifier.weight(1f))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
