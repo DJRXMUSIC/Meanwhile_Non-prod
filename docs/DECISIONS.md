@@ -5,7 +5,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 ## Status
 - M1 — pipeline + shell: done (CI green; Release published once signing secrets are added)
 - M2 — data layer + Supabase: done (CI green)
-- M3 — CGM intake + foreground service: in progress
+- M3 — CGM intake + foreground service: done (CI green)
+- M4 — dose engine + IOB: in progress
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -77,3 +78,31 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - **Setup checklist** (notifications, unrestricted battery, exact alarms, microphone, xDrip feed)
   replaces one-shot prompts; the main screen shows a card until everything is granted.
 - **Stale** threshold (15 min) and **poll interval** (60 s) are device settings.
+
+## Dose engine & factors (M4)
+- **Profile = one JSON document** (`domain/profile/Profile.kt`); every spec number is a field.
+  Changes are addressed by dotted path (`dose.icr`, `factors.F7.maxWeight`,
+  `factors.F11.params.perHour`, `factors.F13` = add a factor). Diffs between versions use the same
+  paths, so learn-cycle proposals, edits, reverts and history all speak one language.
+- **Factor definitions are data** (kind, bounds, default weight, presets, window rule, decay, keywords,
+  params). F10/F11 tunables live in their definitions' `params`.
+- **Bounds are informational.** The AI and Danny may set weights outside them (principle: unlocked);
+  code never clamps an accepted weight. Bounds guide the AI and the manual-activation UI.
+- **Combined multiplier floor at 0 only.** The spec says "no floor"; values between 0 and 1 are
+  allowed, but a *negative* combined multiplier would flip the sign of the dose (e.g. turn a low-BG
+  carb suggestion into insulin), so it's clamped to 0 and the breakdown says so.
+- **Decay with a non-default start weight** scales proportionally: w(t) = 1 − (1 − w₀)·(1 − step)/(1 − step₀).
+  With w₀ = 0.70 this is exactly the §7.2 table.
+- **Windows:** UNTIL_RESET (next 1 am), FIXED (minutes; also cut at 1 am unless `survivesReset`),
+  AFTER_LAST_TRIGGER (F10), CONSUMED_BY_NEXT_DOSE (caffeine; also cleared at 1 am), PER_MEAL.
+  Non-stacking factors keep only the newest activation ("new drink resets").
+- **Caffeine** is a pending-units event, not a multiplier: units = cups × units-per-cup, consumed by
+  the next logged rapid-acting dose (any dose, including a correction-only one).
+- **No BG available:** correction is omitted with a warning on the card; lead time uses the base.
+- **No carbs:** no lead time (nothing to pre-bolus for).
+- **F11 counting:** each reading > 180 counts until the next reading, capped at 15 min
+  (`maxGapMinutes`), so sensor gaps don't inflate the hours.
+- **Version 0** is the built-in starting values; no profile row is written until the first change
+  (avoids a duplicate "v1" racing a restore on a fresh install).
+- **Lead-time factor adjustments** are a map (`leadTime.factorMin`, F7 → −5) so new factors can
+  adjust lead time too.

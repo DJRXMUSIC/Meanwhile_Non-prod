@@ -15,6 +15,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.meanwhile.data.remote.AuthState
 import app.meanwhile.ui.auth.AuthScreen
+import app.meanwhile.ui.debug.DoseDebugScreen
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.main.MainScreen
 import app.meanwhile.ui.settings.ExportScreen
@@ -27,6 +28,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val EXPORT = "export"
     const val SETUP = "setup"
+    const val DEBUG_DOSE = "debug-dose"
 }
 
 @Composable
@@ -69,6 +71,9 @@ private fun AppNavHost(openRequest: String?, onOpenHandled: () -> Unit) {
         }
         composable(Routes.SETUP) {
             SetupScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.DEBUG_DOSE) {
+            DoseDebugScreen(onBack = { nav.popBackStack() })
         }
     }
 }

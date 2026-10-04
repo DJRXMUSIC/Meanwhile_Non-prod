@@ -1,13 +1,12 @@
-## What to try (M3 — CGM intake + foreground service)
+## What to try (M4 — dose engine + IOB)
 
-Setup: `docs/INSTALL.md` §6 (turn on xDrip+ Web Service + Broadcast locally, Identify receiver
-`app.meanwhile.v4`), then the in-app **Finish setup** checklist.
+The dose math is in and all spec golden tests (§5.5 dose cases, §6 IOB) pass in CI.
 
-1. Open Meanwhile: the main screen shows your BG (color-coded), trend arrow, rate and reading age.
-   A persistent notification shows the same.
-2. New readings appear within ~1 minute of xDrip+ (instantly when broadcasts are on).
-3. Back-fill test: force-stop Meanwhile (long-press icon → App info → Force stop), wait 15+ min,
-   reopen — the gap fills from xDrip+ (Settings → CGM shows "Back-filled N readings").
-4. Stale test: stop xDrip+ for 15+ min → a red banner on the main screen and a "CGM readings are stale"
-   notification.
-5. Reboot the phone: the BG notification comes back by itself.
+1. **Settings → Dose calculator (debug)** → enter e.g. 80 g carbs, 40 g fat, 25 g protein: expect
+   **11 u**, split **7 now + 4 at +60 min**, with the full breakdown (carb dose, fat/protein weights,
+   correction, IOB, combined multiplier, raw → rounded, lead time).
+2. Tap extra factors (Sunburn 2.0, Sleep 1.25, Stress 1.20) and watch the combined multiplier cap at 2.0.
+3. Set carbs 0, BG 80, IOB 2 → **0 u** and "consider ~28 g carbs".
+4. Leave BG blank to use your live CGM value and trend.
+
+Nothing is logged from this screen — logging arrives in M5.

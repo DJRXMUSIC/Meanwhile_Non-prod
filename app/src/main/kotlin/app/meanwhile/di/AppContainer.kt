@@ -8,6 +8,8 @@ import app.meanwhile.data.cgm.CgmRepository
 import app.meanwhile.data.cgm.XdripBroadcastSource
 import app.meanwhile.data.cgm.XdripWebSource
 import app.meanwhile.data.db.AppDatabase
+import app.meanwhile.data.dose.DoseContextBuilder
+import app.meanwhile.data.profile.ProfileRepository
 import app.meanwhile.data.db.FeedbackEntity
 import app.meanwhile.data.export.CsvExporter
 import app.meanwhile.data.remote.AuthRepository
@@ -58,6 +60,9 @@ class AppContainer(val app: Application) {
         }
     }
     val cgmIntake: CgmIntake by lazy { CgmIntake(cgm, xdripWeb, XdripBroadcastSource(app), settings, cgmStatus) }
+
+    val profiles: ProfileRepository by lazy { ProfileRepository(db, records, ::requestSync) }
+    val doseContext: DoseContextBuilder by lazy { DoseContextBuilder(db, cgm, profiles) }
 
     fun requestSync() = SyncWorker.requestNow(app)
 

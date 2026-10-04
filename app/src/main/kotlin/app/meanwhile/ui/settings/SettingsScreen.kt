@@ -99,6 +99,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             Button(onClick = { onOpen(Routes.EXPORT) }) { Text("Export…") }
         }
 
+        SectionCard("Dose calculator (debug)") {
+            Text("Try any inputs against the live profile and see the full breakdown. Nothing is logged.")
+            OutlinedButton(onClick = { onOpen(Routes.DEBUG_DOSE) }) { Text("Open calculator") }
+        }
+
         SectionCard("App note") {
             Text("Ideas, bugs or notes about the app — saved to the feedback log.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
