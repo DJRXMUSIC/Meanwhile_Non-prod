@@ -1,11 +1,14 @@
-## What to try (M1 — pipeline + shell)
+## What to try (M2 — data layer + Supabase)
 
-1. On your Pixel 9a, open this release page in Chrome and tap the `.apk` under **Assets**.
-2. Allow Chrome to install unknown apps when asked, then **Install** (if Play Protect warns, choose
-   **More details → Install anyway** — it's your own signed build).
-3. Open **Meanwhile**. You should see the main screen shell: a big "—" where your BG will go, the input
-   field, and the mic button (disabled until M5). Check it in both light and dark mode
-   (Settings → Display → Dark theme).
-4. Optional: add this repo to **Obtainium** for automatic updates (see `docs/INSTALL.md`).
+Setup first (once): `docs/INSTALL.md` §5 — create the Supabase project, add the five secrets,
+re-run the **supabase** and **android** workflows.
 
-Nothing is recorded yet — data, CGM and dosing arrive in M2–M5.
+1. Install this release and open it. Create your account (email + password) on the first screen,
+   or tap "Use without an account" to stay local-only for now.
+2. **Settings → App note**: save a note. The chip at the top of the main screen shows pending/synced.
+3. Offline test: airplane mode → save another note → "1 pending". Turn data on → it syncs within a
+   minute; check Supabase **Table Editor → feedback**.
+4. **Settings → Export…** → pick dates → **Build export** → **Share zip** (or one table's CSV).
+5. Restore test: uninstall → reinstall → sign in → your notes are back (Export shows them).
+
+Then in Supabase turn off **Allow new users to sign up** (INSTALL §5e).

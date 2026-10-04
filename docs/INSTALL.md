@@ -60,5 +60,53 @@ Updates: repeat steps 1–2 for a newer release and tap **Update** — or use Ob
   landing page (and to get a **Run workflow** button in Actions): **Settings** → **General** →
   **Default branch** → switch icon → choose `claude/hopeful-galileo-pgut04` → **Update**.
 
+## 5. Supabase (M2) — cloud backup, sync and restore
+
+**a) Create the project**
+1. Go to `https://supabase.com/dashboard` → sign in (GitHub login is fine) → **New project**.
+2. Name: `meanwhile` · Database password: click **Generate a password** and save it in your password
+   manager (needed below) · Region: **East US** · **Create new project**. Wait ~2 minutes.
+
+**b) Collect five values**
+1. **Project URL** and **anon key**: left sidebar **Project Settings** (gear) → **API Keys** →
+   **Legacy API keys** tab → copy `anon` `public`. Then **Data API** (or **API**) → copy the **Project URL**
+   (looks like `https://abcdefgh.supabase.co`). The anon key is safe to ship in the app; row-level
+   security limits every row to your account.
+2. **Project ref**: the `abcdefgh` part of that URL.
+3. **Database password**: from step a).
+4. **Access token** (lets GitHub Actions apply the database schema for you):
+   `https://supabase.com/dashboard/account/tokens` → **Generate new token** → name `github-actions` → copy.
+
+**c) Add them as GitHub secrets** (repo → **Settings** → **Secrets and variables** → **Actions** →
+**New repository secret**, one each):
+
+| Name | Value |
+|---|---|
+| `SUPABASE_URL` | Project URL |
+| `SUPABASE_ANON_KEY` | anon public key |
+| `SUPABASE_PROJECT_REF` | project ref |
+| `SUPABASE_DB_PASSWORD` | database password |
+| `SUPABASE_ACCESS_TOKEN` | access token |
+
+**d) Apply the schema** — repo **Actions** tab → **supabase** workflow → newest run → **Re-run all jobs**.
+It should finish green; in Supabase, **Table Editor** now lists `cgm_readings`, `doses`, `meals`, …
+(If you'd rather not use the access token: Supabase **SQL Editor** → **New query** → paste the whole file
+`supabase/migrations/20261004000100_meanwhile_init.sql` → **Run**.)
+
+**e) Email sign-in settings**
+1. Supabase → **Authentication** → **Sign In / Providers** → **Email**: enabled. Turn **Confirm email**
+   off (simplest) — or leave it on and click the link Supabase emails you after creating the account.
+2. Re-run the **android** workflow (Actions → newest android run → **Re-run all jobs**) so the APK
+   includes your Supabase URL/key, then install that release.
+3. Open the app → enter your email + a password → **Create account**.
+4. Then lock the door: Supabase → **Authentication** → **Sign In / Providers** → turn off
+   **Allow new users to sign up**. (The repo is public, so anyone can read the anon key from the APK;
+   with sign-ups off and row-level security, nobody else can create an account or read your data.)
+
+**Check it works:** in the app, **Settings → App note** → type something → **Save note**. With the phone in
+airplane mode it stays "1 pending"; turn data back on and within a minute it shows **Synced**, and the
+note appears in Supabase **Table Editor → feedback**. Restore test: uninstall, reinstall, sign in — your
+records come back.
+
 ---
-Later milestones add Supabase (M2), xDrip+ (M3) and AI keys (M6) — each gets its own section here.
+Later milestones add xDrip+ (M3) and AI keys (M6) — each gets its own section here.

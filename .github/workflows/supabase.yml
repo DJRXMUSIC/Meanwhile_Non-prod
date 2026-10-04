@@ -1,0 +1,55 @@
+name: supabase
+
+# Applies SQL migrations and deploys Edge Functions to Danny's Supabase project.
+# Needs secrets SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD (docs/INSTALL.md).
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/supabase.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: supabase
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check secrets
+        id: check
+        run: |
+          if [ -n "$SUPABASE_ACCESS_TOKEN" ] && [ -n "$PROJECT_REF" ] && [ -n "$SUPABASE_DB_PASSWORD" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Supabase deploy skipped — add SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF and SUPABASE_DB_PASSWORD secrets (docs/INSTALL.md)."
+          fi
+
+      - uses: supabase/setup-cli@v3
+        if: steps.check.outputs.ok == 'true'
+        with:
+          version: latest
+
+      - name: Link project
+        if: steps.check.outputs.ok == 'true'
+        run: supabase link --project-ref "$PROJECT_REF"
+
+      - name: Apply migrations
+        if: steps.check.outputs.ok == 'true'
+        run: echo y | supabase db push
+
+      - name: Deploy Edge Functions
+        if: steps.check.outputs.ok == 'true' && hashFiles('supabase/functions/ai/index.ts') != ''
+        run: supabase functions deploy ai --project-ref "$PROJECT_REF"

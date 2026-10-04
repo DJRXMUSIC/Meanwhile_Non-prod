@@ -1,0 +1,2 @@
+# Supabase CLI config for MeanwhileV4. Deploys run from .github/workflows/supabase.yml.
+project_id = "meanwhile"
