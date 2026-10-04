@@ -1,4 +1,4 @@
-package app.meanwhile.ui.common
+package app.meanwhile.format
 
 import java.time.Instant
 import java.time.ZoneId

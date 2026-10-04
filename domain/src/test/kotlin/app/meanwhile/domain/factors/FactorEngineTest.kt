@@ -118,3 +118,18 @@ class FactorEngineTest {
         assertEquals(listOf("F7"), FactorEngine.prune(p, at(4, 9), zone).active.map { it.factorId })
     }
 }
+
+class ActivationsTest {
+    private val p = app.meanwhile.domain.profile.Profile()
+
+    @kotlin.test.Test fun presetsDefaultsAndReplacement() {
+        val a = Activations.activate(p, "F8", 1L, "morning_report", preset = "poor")
+        kotlin.test.assertEquals(1.25, a.active.single().weight)
+        val b = Activations.activate(a, "F8", 2L, "morning_report", preset = "ok")
+        kotlin.test.assertEquals(listOf(1.10), b.active.map { it.weight })
+        val c = Activations.activate(b, "F7", 3L, "offline")
+        kotlin.test.assertEquals(0.85, c.active.first { it.factorId == "F7" }.weight)
+        kotlin.test.assertEquals(listOf("F8"), Activations.deactivate(c, "F7").active.map { it.factorId })
+        kotlin.test.assertEquals(0.5, Activations.activate(c, "F7", 4L, "ai", weight = 0.5).active.first { it.factorId == "F7" }.weight)
+    }
+}

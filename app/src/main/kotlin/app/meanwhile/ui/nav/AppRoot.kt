@@ -10,14 +10,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import app.meanwhile.data.remote.AuthState
 import app.meanwhile.ui.auth.AuthScreen
 import app.meanwhile.ui.debug.DoseDebugScreen
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.main.MainScreen
+import app.meanwhile.ui.profile.EditSettingsScreen
+import app.meanwhile.ui.profile.JsonEditScreen
+import app.meanwhile.ui.profile.ProfileScreen
+import app.meanwhile.ui.profile.VersionDetailScreen
 import app.meanwhile.ui.settings.ExportScreen
 import app.meanwhile.ui.settings.SettingsScreen
 import app.meanwhile.ui.setup.SetupScreen
@@ -29,6 +35,14 @@ object Routes {
     const val EXPORT = "export"
     const val SETUP = "setup"
     const val DEBUG_DOSE = "debug-dose"
+    const val PROFILE = "profile"
+    const val PROFILE_EDIT = "profile-edit"
+    const val PROFILE_VERSION = "profile-version"
+    const val PROFILE_JSON = "profile-json"
+    const val REVIEW = "review"
+
+    fun profileVersion(id: String) = "$PROFILE_VERSION/$id"
+    fun profileJson(path: String) = "$PROFILE_JSON?path=$path"
 }
 
 @Composable
@@ -74,6 +88,24 @@ private fun AppNavHost(openRequest: String?, onOpenHandled: () -> Unit) {
         }
         composable(Routes.DEBUG_DOSE) {
             DoseDebugScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.PROFILE) {
+            ProfileScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate(it) })
+        }
+        composable(Routes.PROFILE_EDIT) {
+            EditSettingsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(
+            "${Routes.PROFILE_VERSION}/{id}",
+            arguments = listOf(navArgument("id") { type = NavType.StringType }),
+        ) { entry ->
+            VersionDetailScreen(entry.arguments?.getString("id").orEmpty(), onBack = { nav.popBackStack() }, onOpen = { nav.navigate(it) })
+        }
+        composable(
+            "${Routes.PROFILE_JSON}?path={path}",
+            arguments = listOf(navArgument("path") { type = NavType.StringType; defaultValue = "" }),
+        ) { entry ->
+            JsonEditScreen(entry.arguments?.getString("path").orEmpty(), onBack = { nav.popBackStack() })
         }
     }
 }

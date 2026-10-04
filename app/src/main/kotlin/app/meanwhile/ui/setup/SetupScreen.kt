@@ -35,7 +35,7 @@ import app.meanwhile.notify.Notifications
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.common.ScreenScaffold
 import app.meanwhile.ui.common.SectionCard
-import app.meanwhile.ui.common.relativeTime
+import app.meanwhile.format.relativeTime
 
 /** What still needs granting for reliable background operation (spec §13.3). */
 data class SetupState(

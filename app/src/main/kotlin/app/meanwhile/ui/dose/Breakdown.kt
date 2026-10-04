@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import app.meanwhile.domain.dose.DoseInput
 import app.meanwhile.domain.dose.DoseResult
 import app.meanwhile.domain.profile.Profile
-import app.meanwhile.ui.common.fmt
+import app.meanwhile.format.fmt
 
 /** Full transparent breakdown of a recommendation (spec §9.5): every term the engine used. */
 @Composable

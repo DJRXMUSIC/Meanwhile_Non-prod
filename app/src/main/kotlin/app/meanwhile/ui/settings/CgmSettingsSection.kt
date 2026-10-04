@@ -26,7 +26,7 @@ import app.meanwhile.data.settings.AppSettings
 import app.meanwhile.service.CgmService
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.common.SectionCard
-import app.meanwhile.ui.common.formatTime
+import app.meanwhile.format.formatTime
 import kotlinx.coroutines.launch
 
 @Composable

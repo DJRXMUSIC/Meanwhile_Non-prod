@@ -6,7 +6,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - M1 — pipeline + shell: done (CI green; Release published once signing secrets are added)
 - M2 — data layer + Supabase: done (CI green)
 - M3 — CGM intake + foreground service: done (CI green)
-- M4 — dose engine + IOB: in progress
+- M4 — dose engine + IOB: done (CI green, golden tests in CI)
+- M5 — input, routing, NBA, dose logging, profile: in progress
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -106,3 +107,26 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   (avoids a duplicate "v1" racing a restore on a fresh install).
 - **Lead-time factor adjustments** are a map (`leadTime.factorMin`, F7 → −5) so new factors can
   adjust lead time too.
+
+## Input, NBA, logging, profile (M5)
+- **Offline router** (`domain/router/OfflineRouter.kt`) is regex + keyword based; factor keywords
+  come from the profile's factor definitions (so AI-added factors are routable offline). Leftover
+  words after removing recognised spans become a meal description (macros prompted offline).
+- **Order:** feedback → dose given → factor updates → meal/NBA, so a combined input updates the profile
+  before Next Best Action runs.
+- **Coffee alone** produces an NBA card (caffeine units only). "correction"/"check" gives a zero-carb NBA.
+- **Proposals are recorded when shown**; the **meal row is written when the dose is logged** (a
+  dismissed proposal leaves no meal behind, but the proposal keeps the macros in its snapshot).
+- **Split doses:** "Log dose as shown" logs the first injection and arms an exact-alarm reminder at
+  meal start (now + lead time) + 60 min; the notification's "Log N u" action logs the second part.
+  Edit lets Danny change both parts. "Skip" records a 0 u second part with reason "skipped" so stats
+  stay honest. Pending reminders are re-armed after reboot from the dose rows.
+- **Path switch** re-routes the same text; factor changes made by the previous path are undone with
+  compensating rows (new profile version + reversing events), never deletes.
+- **Offline factor updates apply immediately** (spec §9.4, source `offline_fallback`) and queue an
+  AI refinement; undo is one tap on the card.
+- **Voice:** the transcript lands in the text field for review/editing; it is never auto-sent.
+- **Profile editing:** a settings form (every scalar by path) and a JSON editor for any part (factor
+  definitions, windows, decay, new factors). Both save `manual` versions; JSON is validated by
+  decoding before saving.
+- **Revert** = new `manual` version copying the old profile (expired activations pruned).

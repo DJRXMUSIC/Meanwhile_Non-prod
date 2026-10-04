@@ -18,6 +18,13 @@
     <!-- xDrip+ sends its local BG broadcast with this receiver permission. -->
     <uses-permission android:name="com.eveningoutpost.dexdrip.permissions.RECEIVE_BG_ESTIMATE" />
 
+    <!-- On-device speech recognition service lookup (SpeechRecognizer). -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MeanwhileApp"
         android:allowBackup="false"
@@ -64,6 +71,13 @@
                 <action android:name="com.eveningoutpost.dexdrip.BgEstimate" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".alarm.DoseActionReceiver"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

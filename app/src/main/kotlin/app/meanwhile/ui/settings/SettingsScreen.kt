@@ -25,7 +25,7 @@ import app.meanwhile.data.sync.SyncOutcome
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.common.ScreenScaffold
 import app.meanwhile.ui.common.SectionCard
-import app.meanwhile.ui.common.relativeTime
+import app.meanwhile.format.relativeTime
 import app.meanwhile.ui.nav.Routes
 import kotlinx.coroutines.launch
 

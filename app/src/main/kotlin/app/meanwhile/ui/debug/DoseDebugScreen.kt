@@ -29,7 +29,7 @@ import app.meanwhile.domain.profile.FactorKind
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.common.ScreenScaffold
 import app.meanwhile.ui.common.SectionCard
-import app.meanwhile.ui.common.fmt
+import app.meanwhile.format.fmt
 import app.meanwhile.ui.dose.Breakdown
 
 /**

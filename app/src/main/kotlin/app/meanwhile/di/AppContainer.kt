@@ -8,7 +8,12 @@ import app.meanwhile.data.cgm.CgmRepository
 import app.meanwhile.data.cgm.XdripBroadcastSource
 import app.meanwhile.data.cgm.XdripWebSource
 import app.meanwhile.data.db.AppDatabase
+import app.meanwhile.alarm.Alarms
 import app.meanwhile.data.dose.DoseContextBuilder
+import app.meanwhile.data.input.AiHooks
+import app.meanwhile.data.input.FactorUpdater
+import app.meanwhile.data.input.InputProcessor
+import app.meanwhile.data.input.NbaService
 import app.meanwhile.data.profile.ProfileRepository
 import app.meanwhile.data.db.FeedbackEntity
 import app.meanwhile.data.export.CsvExporter
@@ -63,16 +68,41 @@ class AppContainer(val app: Application) {
 
     val profiles: ProfileRepository by lazy { ProfileRepository(db, records, ::requestSync) }
     val doseContext: DoseContextBuilder by lazy { DoseContextBuilder(db, cgm, profiles) }
+    val factorUpdater: FactorUpdater by lazy { FactorUpdater(db, records, profiles, ::requestSync) }
+    val nba: NbaService by lazy {
+        NbaService(
+            db, records, doseContext, ::requestSync,
+            staleMinutes = { settings.current().staleMinutes },
+            scheduleSecond = { id, units, due -> Alarms.scheduleSplit(app, id, units, due) },
+            cancelSecond = { id -> Alarms.cancelSplit(app, id) },
+        )
+    }
+
+    /** Replaced by the AI client in M6; the offline path never needs it. */
+    @Volatile var aiHooks: AiHooks = object : AiHooks {}
+    val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync) { aiHooks } }
 
     fun requestSync() = SyncWorker.requestNow(app)
 
     /** Called by [app.meanwhile.service.BootReceiver]: re-arm everything time-based. */
     fun onBootOrUpdate() {
         requestSync()
+        appScope.launch { rearmAlarms() }
+    }
+
+    /** Re-arms split reminders that are still pending (alarms don't survive reboot). */
+    suspend fun rearmAlarms() {
+        nba.pendingSeconds().forEach { Alarms.scheduleSplit(app, it.proposalId, it.units, it.dueAt) }
+    }
+
+    /** Non-split alarms (M7 adds the 1 am learn cycle and 6 am F11). */
+    suspend fun onAlarm(action: String?) {
+        // Filled in by later milestones.
     }
 
     fun start() {
         CgmService.start(app)
+        appScope.launch { rearmAlarms() }
         SyncWorker.schedulePeriodic(app)
         requestSync()
         // A (re)sign-in pulls everything missing locally — this is the restore path.
