@@ -11,7 +11,8 @@ class OfflineRouter(private val factors: List<FactorDefinition>) {
 
     fun route(input: String): RouteResult {
         val text = input.trim()
-        val lower = text.lowercase()
+        // Spoken numbers become digits first, so voice and typed input parse identically.
+        val lower = SpokenNumbers.normalize(text.lowercase())
 
         feedback(text, lower)?.let { return RouteResult(listOf(it), ROUTER) }
 

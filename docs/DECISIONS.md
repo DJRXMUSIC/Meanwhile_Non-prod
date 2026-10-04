@@ -284,3 +284,17 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - The sync worker switched to `ExistingPeriodicWorkPolicy.UPDATE` so existing installs pick up the
   constraint change.
 
+## Voice quality (1.2)
+- **Engine:** `createOnDeviceSpeechRecognizer` — the Pixel's own on-device dictation model (the same
+  engine behind Recorder/Gboard), explicitly, instead of hoping the default service honors
+  "prefer offline". Private and fast; no audio ever leaves the phone (spec §9.1).
+- **Formatting:** `FORMATTING_OPTIMIZE_QUALITY` so the recognizer emits digits ("60 carbs"), and
+  offensive-word masking is off (asterisks would break keyword routing).
+- **Biasing:** recognition is biased toward ~120 domain terms — dose words plus the live profile's
+  factor keywords, so AI-added factors improve recognition too.
+- **Patience:** end-of-speech silence raised to 2 s so a thinking pause doesn't cut the utterance.
+- **Belt and braces in domain:** `SpokenNumbers.normalize` turns spoken numbers into digits
+  ("sixty carbs twenty fat" → "60 carbs 20 fat", "six and a half units" → "6.5 units", hundreds and
+  compounds included) at the router's front door — voice and typed input parse identically, on both
+  the offline and the AI path (which parses numbers per span through the same router). Unit-tested.
+

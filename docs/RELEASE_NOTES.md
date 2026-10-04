@@ -11,6 +11,10 @@ First complete build. Install: download the APK below → open → allow "instal
 - **Setup shrank:** no more `ALLOWED_USER_IDS` step — your first account automatically owns the AI,
   and CI locks sign-ups by itself after you create it. Each CI run's Summary page is a setup checklist.
 - **Setup → System status:** CGM / backup / network at a glance plus a **Test AI** button.
+- **Better voice:** the Pixel's on-device dictation engine is used explicitly, biased toward your
+  dosing vocabulary and factor words, returns digits ("60 carbs"), and waits out a thinking pause.
+  "Sixty carbs twenty fat" or "took six and a half units" now parse exactly like typed numbers —
+  even offline.
 
 ### From 1.1
 - **Main screen stripped down** (spec §15): glucose, active factors, the input bar — and a single

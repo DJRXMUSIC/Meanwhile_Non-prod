@@ -116,4 +116,18 @@ class OfflineRouterTest {
         assertEquals(listOf("F4"), r.filterIsInstance<FactorIntent>().map { it.factorId })
         assertNull(r.filterIsInstance<MealIntent>().firstOrNull())
     }
+
+    @Test
+    fun `spoken numbers parse like typed ones`() {
+        val meal = router.route("sixty carbs twenty fat thirty protein").intents.filterIsInstance<MealIntent>().single()
+        assertEquals(60.0, meal.carbsG)
+        assertEquals(20.0, meal.fatG)
+        assertEquals(30.0, meal.proteinG)
+
+        val dose = router.route("took six and a half units").intents.filterIsInstance<DoseIntent>().single()
+        assertEquals(6.5, dose.units)
+
+        val coffee = router.route("two coffees").intents.filterIsInstance<FactorIntent>().single()
+        assertEquals("F4", coffee.factorId)
+    }
 }

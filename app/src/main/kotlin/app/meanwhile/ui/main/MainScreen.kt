@@ -46,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +68,7 @@ import app.meanwhile.ui.common.rememberNow
 import app.meanwhile.ui.nav.Routes
 import app.meanwhile.ui.setup.rememberSetupState
 import app.meanwhile.ui.speech.rememberSpeechController
+import app.meanwhile.ui.speech.speechBiasing
 import app.meanwhile.domain.profile.Profile
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -182,8 +184,12 @@ private fun PendingSecondCard(p: PendingSecond, now: Long, vm: MainViewModel) {
 private fun InputBar(vm: MainViewModel) {
     val context = LocalContext.current
     val speech = rememberSpeechController()
+    val c = LocalAppContainer.current
+    val profileState by c.profiles.current.collectAsStateWithLifecycle(initialValue = ProfileState(Profile(), null))
+    // Recognition leans toward dosing vocabulary and this profile's factor keywords.
+    val biasing = remember(profileState.version?.id) { speechBiasing(profileState.profile) }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) speech.start { vm.text = it; vm.via = "voice" }
+        if (granted) speech.start(biasing) { vm.text = it; vm.via = "voice" }
     }
     Surface(tonalElevation = 3.dp) {
         Column(
@@ -211,7 +217,7 @@ private fun InputBar(vm: MainViewModel) {
                         when {
                             speech.listening -> speech.stop()
                             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED ->
-                                speech.start { vm.text = it; vm.via = "voice" }
+                                speech.start(biasing) { vm.text = it; vm.via = "voice" }
                             else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     },
