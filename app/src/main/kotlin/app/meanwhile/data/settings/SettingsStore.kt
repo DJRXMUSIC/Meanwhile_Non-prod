@@ -27,6 +27,17 @@ enum class AiProviderPreference(val wire: String, val label: String) {
     }
 }
 
+/** Light/dark appearance; SYSTEM follows the phone. */
+enum class ThemeMode(val wire: String, val label: String) {
+    SYSTEM("system", "Follow system"),
+    LIGHT("light", "Light"),
+    DARK("dark", "Dark");
+
+    companion object {
+        fun fromWire(value: String?) = entries.firstOrNull { it.wire == value } ?: SYSTEM
+    }
+}
+
 /** Device settings (not part of the dose profile, not synced). */
 data class AppSettings(
     val aiProvider: AiProviderPreference = AiProviderPreference.GEMINI_FIRST,
@@ -38,6 +49,7 @@ data class AppSettings(
     val staleMinutes: Int = 15,
     val authSkipped: Boolean = false,
     val setupPromptsShown: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
 ) {
     companion object {
         const val DEFAULT_XDRIP_URL = "http://127.0.0.1:17580"
@@ -66,6 +78,7 @@ class SettingsStore(context: Context) {
         val staleMinutes = intPreferencesKey("stale_minutes")
         val authSkipped = booleanPreferencesKey("auth_skipped")
         val setupPromptsShown = booleanPreferencesKey("setup_prompts_shown")
+        val themeMode = stringPreferencesKey("theme_mode")
         val syncLastSuccess = longPreferencesKey("sync_last_success")
         val syncLastAttempt = longPreferencesKey("sync_last_attempt")
         val syncLastError = stringPreferencesKey("sync_last_error")
@@ -85,6 +98,7 @@ class SettingsStore(context: Context) {
         staleMinutes = this[Keys.staleMinutes] ?: 15,
         authSkipped = this[Keys.authSkipped] ?: false,
         setupPromptsShown = this[Keys.setupPromptsShown] ?: false,
+        themeMode = ThemeMode.fromWire(this[Keys.themeMode]),
     )
 
     val settings: Flow<AppSettings> = store.data.map { it.toSettings() }
@@ -104,6 +118,7 @@ class SettingsStore(context: Context) {
             p[Keys.staleMinutes] = new.staleMinutes.coerceAtLeast(1)
             p[Keys.authSkipped] = new.authSkipped
             p[Keys.setupPromptsShown] = new.setupPromptsShown
+            p[Keys.themeMode] = new.themeMode.wire
         }
     }
 

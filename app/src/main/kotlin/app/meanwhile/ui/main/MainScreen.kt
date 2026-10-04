@@ -92,6 +92,7 @@ fun MainScreen(onOpen: (String) -> Unit) {
                 actions = {
                     AiIndicator()
                     SyncIndicator(onClick = { onOpen(Routes.SETTINGS) })
+                    IconButton(onClick = { onOpen(Routes.STATS) }) { Icon(painterResource(R.drawable.ic_stats), contentDescription = "Stats") }
                     IconButton(onClick = { onOpen(Routes.PROFILE) }) { Icon(Icons.Filled.Person, contentDescription = "Profile") }
                     IconButton(onClick = { onOpen(Routes.SETTINGS) }) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
                 },

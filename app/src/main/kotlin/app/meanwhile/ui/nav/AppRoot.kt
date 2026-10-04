@@ -29,6 +29,7 @@ import app.meanwhile.ui.review.ReviewScreen
 import app.meanwhile.ui.settings.ExportScreen
 import app.meanwhile.ui.settings.SettingsScreen
 import app.meanwhile.ui.setup.SetupScreen
+import app.meanwhile.ui.stats.StatsScreen
 import kotlinx.coroutines.launch
 
 object Routes {
@@ -43,6 +44,7 @@ object Routes {
     const val PROFILE_JSON = "profile-json"
     const val REVIEW = "review"
     const val MORNING = "morning"
+    const val STATS = "stats"
 
     fun profileVersion(id: String) = "$PROFILE_VERSION/$id"
     fun profileJson(path: String) = "$PROFILE_JSON?path=$path"
@@ -91,6 +93,9 @@ private fun AppNavHost(openRequest: String?, onOpenHandled: () -> Unit) {
         }
         composable(Routes.DEBUG_DOSE) {
             DoseDebugScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.STATS) {
+            StatsScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.MORNING) {
             MorningReportScreen(onDone = { nav.popBackStack() })

@@ -15,6 +15,7 @@ import app.meanwhile.data.ai.AiQueueProcessor
 import app.meanwhile.data.ai.ProposalReview
 import app.meanwhile.data.net.NetworkMonitor
 import app.meanwhile.data.dose.DoseContextBuilder
+import app.meanwhile.domain.dose.DoseEngine
 import app.meanwhile.data.input.AiHooks
 import app.meanwhile.data.input.FactorUpdater
 import app.meanwhile.data.input.InputProcessor
@@ -28,6 +29,7 @@ import app.meanwhile.data.remote.AuthRepository
 import app.meanwhile.data.remote.AuthState
 import app.meanwhile.data.remote.SupabaseProvider
 import app.meanwhile.data.settings.SettingsStore
+import app.meanwhile.data.stats.StatsRepository
 import app.meanwhile.data.sync.SyncEngine
 import app.meanwhile.data.sync.SyncWorker
 import app.meanwhile.service.CgmService
@@ -97,6 +99,7 @@ class AppContainer(val app: Application) {
     val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync) { aiHooks } }
 
     val nightly: NightlyJobs by lazy { NightlyJobs(app, db, records, profiles, cgm, ai, settings, ::requestSync) }
+    val stats: StatsRepository by lazy { StatsRepository(db) }
 
     fun requestSync() = SyncWorker.requestNow(app)
 
@@ -145,6 +148,8 @@ class AppContainer(val app: Application) {
         }
         SyncWorker.schedulePeriodic(app)
         requestSync()
+        // Warm Room, the profile and the dose engine so the first Next Best Action is fast (spec §14 M8: < 200 ms).
+        appScope.launch { runCatching { DoseEngine.compute(doseContext.build().input(), profiles.current().profile) } }
         // Back online (or signed in): run AI calls queued while offline (spec §9.4).
         appScope.launch {
             combine(network.online, auth.state) { online, a -> online && a is AuthState.SignedIn && !a.offline }

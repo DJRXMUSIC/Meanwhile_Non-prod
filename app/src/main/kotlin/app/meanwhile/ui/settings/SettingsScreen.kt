@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.meanwhile.BuildConfig
 import app.meanwhile.data.remote.AuthState
 import app.meanwhile.data.settings.AiProviderPreference
+import app.meanwhile.data.settings.ThemeMode
 import app.meanwhile.data.settings.SyncStatus
 import app.meanwhile.data.sync.SyncOutcome
 import app.meanwhile.ui.common.LocalAppContainer
@@ -109,6 +110,17 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 }
                 status.lastOkAt?.let { Text("Last AI success ${relativeTime(it)}", style = MaterialTheme.typography.bodySmall) }
                 status.lastError?.let { Text("Last AI error: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
+        }
+
+        appSettings?.let { st ->
+            SectionCard("Appearance") {
+                ThemeMode.entries.forEach { mode ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = st.themeMode == mode, onClick = { scope.launch { c.settings.update { it.copy(themeMode = mode) } } })
+                        Text(mode.label)
+                    }
+                }
             }
         }
 

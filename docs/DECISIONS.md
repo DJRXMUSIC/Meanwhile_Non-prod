@@ -9,7 +9,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - M4 — dose engine + IOB: done (CI green, golden tests in CI)
 - M5 — input, routing, NBA, dose logging, profile: done (CI green)
 - M6 — AI layer: done (CI green; Deno tests in the supabase workflow)
-- M7 — learn cycle + morning report: in progress
+- M7 — learn cycle + morning report: done (CI green)
+- M8 — stats + polish: done
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -190,3 +191,30 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   every 15 min; a weight of 1.00 writes no version.
 - **Outcome tagging** runs every 15 min (service), at app start and before each learn cycle; doses
   wait up to 24 h for back-filled readings before an all-null outcome is stored.
+
+## Stats & polish (M8)
+- **Stats screen** (bar-chart icon on the main screen) is computed on the phone from the local
+  append-only records, so it works offline: today / 1 / 7 / 14 / 30 days. Time in range is
+  **time-weighted** (each reading counts until the next one, for at most 15 min), not a count of
+  readings. "Goal streak" = consecutive days ≥ 80% with at least 12 h of CGM coverage; today counts
+  once it has 12 h of data, otherwise the streak is counted from yesterday.
+- **Followed vs overridden** uses one rule shared by the morning report, the stats screen and the
+  `v_proposal_outcomes` view (domain `ProposalFollowRule`): followed = every injection logged for the
+  proposal matched what it proposed and the total equals the proposal; anything else logged =
+  overridden; nothing logged = not logged. Outcomes are those of the first injection (+2/+3/+4 h).
+- **AI accuracy by provider/model** = per call: valid / invalid / error, served-as-fallback, mean
+  latency, jobs; per proposal: accepted / edited / rejected (profile versions with an `ai_call_id`);
+  meal estimates: mean absolute carb error between the AI's original estimate and what was logged.
+- **Supabase analysis views** (`v_tir_daily`, `v_tir_hourly`, `v_tir_monthly`, `v_tir_by_time_of_day`,
+  `v_tir_by_weekday`, `v_proposal_outcomes`, `v_ai_calls_by_model`, `v_cgm_local`) are
+  `security_invoker` so row-level security still applies; their time in range is by reading count
+  (simple SQL; within a fraction of a percent of time-weighted on a steady feed). Local time comes from
+  one function, `meanwhile_tz()` = `America/New_York`. See `docs/ANALYSIS.md`.
+- **Theme:** Settings → Appearance (follow system / light / dark); status- and navigation-bar icons
+  follow the app's choice. Glucose colors are the same hues in both themes, tuned for contrast.
+- **Performance:** every proposal stores its compute time (context build + dose math, target < 200 ms)
+  and the stats screen shows the median and slowest. The dose context (Room, profile, engine) is warmed
+  at app start so the first proposal doesn't pay for opening the database. R8/minify stays off: the APK
+  is installed from Releases on one phone, size doesn't matter, and it avoids keep-rule risk around
+  serialization and supabase-kt.
+
