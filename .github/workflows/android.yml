@@ -40,6 +40,9 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          # The repo's default branch is not this app's branch, so allow cache writes everywhere.
+          cache-read-only: false
 
       - name: Domain unit tests (dose engine golden tests)
         run: ./gradlew -p domain test --console=plain
@@ -51,7 +54,7 @@ jobs:
           echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: App unit tests + release APK
-        run: ./gradlew :app:testReleaseUnitTest :app:assembleRelease --console=plain
+        run: ./gradlew :app:testDebugUnitTest :app:assembleRelease --console=plain
 
       - name: Collect APK
         id: apk
