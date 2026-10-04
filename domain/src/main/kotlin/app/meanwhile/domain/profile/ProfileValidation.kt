@@ -50,6 +50,18 @@ object ProfileValidation {
 
         hour("resetHour", p.resetHour)
 
+        val l = p.learning
+        if (l.lookbackDays < 1) add("learning.lookbackDays must be at least 1 (is ${l.lookbackDays})")
+        if (l.minLessons < 1) add("learning.minLessons must be at least 1 (is ${l.minLessons})")
+        if (!(l.rate > 0 && l.rate <= 1)) add("learning.rate must be above 0 and at most 1 (is ${show(l.rate)})")
+        if (!l.minChangePct.isFinite() || l.minChangePct < 0) add("learning.minChangePct can't be negative (is ${show(l.minChangePct)})")
+        if (l.evaluateAfterLessons < 1) add("learning.evaluateAfterLessons must be at least 1 (is ${l.evaluateAfterLessons})")
+        if (!l.revertIfWorsePct.isFinite() || l.revertIfWorsePct < 0) add("learning.revertIfWorsePct can't be negative (is ${show(l.revertIfWorsePct)})")
+        finite("learning.severeLowMgDl", l.severeLowMgDl)
+        finite("learning.lowMgDl", l.lowMgDl)
+        if (l.aiMinNewLessons < 1) add("learning.aiMinNewLessons must be at least 1 (is ${l.aiMinNewLessons})")
+        if (!l.aiMinHoursBetween.isFinite() || l.aiMinHoursBetween < 0) add("learning.aiMinHoursBetween can't be negative (is ${show(l.aiMinHoursBetween)})")
+
         val ids = p.factors.map { it.id }
         ids.groupingBy { it }.eachCount().filter { it.value > 1 }.keys.forEach { add("factor id $it is used more than once") }
         for (f in p.factors) {

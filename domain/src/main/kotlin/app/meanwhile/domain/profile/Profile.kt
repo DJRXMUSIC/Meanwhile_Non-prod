@@ -18,6 +18,8 @@ data class Profile(
     val factors: List<FactorDefinition> = DefaultFactors.all,
     /** Factor activations currently in effect (expired ones are ignored and pruned on the next version). */
     val active: List<ActiveFactor> = emptyList(),
+    /** How continuous learning behaves (local tuner + keep/revert evaluation). */
+    val learning: LearningSettings = LearningSettings(),
 ) {
     fun factor(id: String): FactorDefinition? = factors.firstOrNull { it.id == id }
 }
@@ -34,6 +36,34 @@ data class DoseSettings(
     /** Pen increment; rounding is to the nearest increment, halves up, minimum 0. */
     val unitIncrement: Double = 1.0,
     val insulin: String = "Humalog",
+)
+
+/**
+ * Continuous learning (1.3). Every completed dose outcome is a lesson; the local tuner moves ICR, ISF
+ * and units-per-event toward what the lessons imply, and every applied change is judged on the
+ * outcomes that follow it and reverted if they got worse. All of it is tunable like any setting.
+ */
+@Serializable
+data class LearningSettings(
+    /** Days of lessons the tuner and the evaluator look at. */
+    val lookbackDays: Int = 14,
+    /** Clean lessons needed — in total, and new since the value last changed — before the tuner moves it. */
+    val minLessons: Int = 3,
+    /** Share of the gap between the current value and what the lessons imply that one step closes (1 = all). */
+    val rate: Double = 0.5,
+    /** Steps smaller than this (% of the current value) are noise and skipped. */
+    val minChangePct: Double = 3.0,
+    /** Lessons after a change before it is judged keep or revert. */
+    val evaluateAfterLessons: Int = 3,
+    /** Revert a change when the average miss after it is this much worse (%) than before it. */
+    val revertIfWorsePct: Double = 15.0,
+    /** A reading below this after a change that gives more insulin reverts the change at once. */
+    val severeLowMgDl: Double = 54.0,
+    /** Below this a dose "went low" (rescue carbs likely), so the low — not the end BG — is the lesson. */
+    val lowMgDl: Double = 70.0,
+    /** New clean lessons, and hours since the last AI review, before an extra AI review runs. */
+    val aiMinNewLessons: Int = 2,
+    val aiMinHoursBetween: Double = 3.0,
 )
 
 /** Exponential insulin activity model (spec §6). */

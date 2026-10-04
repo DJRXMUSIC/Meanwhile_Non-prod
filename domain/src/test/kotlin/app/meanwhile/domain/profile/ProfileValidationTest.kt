@@ -54,4 +54,24 @@ class ProfileValidationTest {
         assertEquals(emptyList(), r.profileProblems)
         assertTrue(r.finalUnits > 0)
     }
+
+    @Test
+    fun `learning settings are validated`() {
+        val bad = Profile(learning = LearningSettings(rate = 0.0, minLessons = 0, evaluateAfterLessons = 0))
+        val problems = ProfileValidation.problems(bad)
+        assertTrue(problems.any { it.startsWith("learning.rate") }, problems.toString())
+        assertTrue(problems.any { it.startsWith("learning.minLessons") }, problems.toString())
+        assertTrue(problems.any { it.startsWith("learning.evaluateAfterLessons") }, problems.toString())
+        assertEquals(emptyList(), ProfileValidation.problems(Profile(learning = LearningSettings(rate = 1.0))))
+    }
+
+    @Test
+    fun `profiles saved before learning settings existed still load with defaults`() {
+        val tree = ProfileJson.tree(Profile()).toMutableMap()
+        tree.remove("learning")
+        val old = ProfileJson.fromTree(kotlinx.serialization.json.JsonObject(tree))
+        assertEquals(LearningSettings(), old.learning)
+        assertEquals(emptyList(), ProfileValidation.problems(old))
+    }
 }
+
