@@ -1,5 +1,6 @@
 package app.meanwhile.ui.review
 
+import app.meanwhile.ui.common.rememberSafeScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,7 +18,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
@@ -104,7 +104,7 @@ fun ChangeReviewList(state: ReviewState, enabled: Boolean = true) {
 @Composable
 fun ReviewScreen(id: String, onBack: () -> Unit) {
     val c = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberSafeScope()
     val version by produceState<ProfileVersionEntity?>(null, id) { value = c.profiles.byId(id) }
     val decided by produceState(false, id) { value = c.profiles.versions.first().any { it.supersedesId == id } }
     var message by remember { mutableStateOf<String?>(null) }

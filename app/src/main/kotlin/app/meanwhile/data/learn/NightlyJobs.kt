@@ -19,6 +19,7 @@ import app.meanwhile.domain.factors.FactorEngine
 import app.meanwhile.domain.stats.Outcomes
 import app.meanwhile.domain.time.ResetClock
 import app.meanwhile.notify.Notifications
+import app.meanwhile.domain.util.UuidV7
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -55,6 +56,9 @@ class NightlyJobs(
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
 ) {
     private val learnLock = Mutex()
+    // Called from the CGM service, app start, alarms and the learn cycle — possibly at the same time.
+    private val outcomeLock = Mutex()
+    private val overnightLock = Mutex()
     private val payloads = LearnPayload(db)
 
     /** The night the most recent 1 am reset belongs to (its local date). */
@@ -123,14 +127,14 @@ class NightlyJobs(
     }
 
     /** Spec §7.3: at 6 am, hours 10 pm–6 am above 180 → F11 weight until the 1 am reset. */
-    suspend fun overnightIfNeeded(now: Instant = Instant.now()): OvernightResultView? {
+    suspend fun overnightIfNeeded(now: Instant = Instant.now()): OvernightResultView? = overnightLock.withLock {
         val z = zone()
         val today = LocalDate.ofInstant(now, z)
         val endHour = (profiles.current().profile.factor("F11")?.params?.get("endHour") ?: 6.0).toInt()
         val sixAm = ZonedDateTime.of(today, LocalTime.of(endHour, 0), z).toInstant()
-        if (now.isBefore(sixAm)) return null
+        if (now.isBefore(sixAm)) return@withLock null
         if (settings.marker(KEY_F11_DONE) == today.toString()) {
-            return settings.marker("f11_result_$today")?.let { runCatching { AppJson.decodeFromString(OvernightResultView.serializer(), it) }.getOrNull() }
+            return@withLock settings.marker("f11_result_$today")?.let { runCatching { AppJson.decodeFromString(OvernightResultView.serializer(), it) }.getOrNull() }
         }
         val readings = cgm.recent(sixAm.minus(Duration.ofHours(10)))
         val state = profiles.current()
@@ -149,15 +153,15 @@ class NightlyJobs(
         val view = OvernightResultView(r.hours, r.weight, versionId, now.toEpochMilli())
         settings.setMarker("f11_result_$today", AppJson.encodeToString(OvernightResultView.serializer(), view))
         settings.setMarker(KEY_F11_DONE, today.toString())
-        return view
+        view
     }
 
     /** Spec §11.4: BG at +2/+3/+4 h and min/max over 4 h for each logged rapid dose. */
-    suspend fun tagOutcomes(now: Instant = Instant.now()) {
+    suspend fun tagOutcomes(now: Instant = Instant.now()): Unit = outcomeLock.withLock {
         val tagged = db.outcomes().taggedDoseIds().toSet()
         val doses = db.doses().since(now.minus(Duration.ofHours(48)).toEpochMilli())
             .filter { it.insulin == "rapid" && it.units > 0 && it.id !in tagged && Outcomes.ready(Instant.ofEpochMilli(it.givenAt), now) }
-        if (doses.isEmpty()) return
+        if (doses.isEmpty()) return@withLock
         val readings = cgm.recent(Instant.ofEpochMilli(doses.minOf { it.givenAt }))
         val rows = doses.mapNotNull { d ->
             val at = Instant.ofEpochMilli(d.givenAt)
@@ -165,7 +169,10 @@ class NightlyJobs(
             val stale = Duration.between(at, now).toHours() >= 24
             if (o.min4h == null && !stale) return@mapNotNull null // wait for back-fill
             val m = records.meta(recordedAt = at.plus(Duration.ofHours(4)).toEpochMilli(), now = now.toEpochMilli())
-            OutcomeEntity(m.id, m.userId, m.createdAt, m.recordedAt, doseId = d.id, bg2h = o.bg2h, bg3h = o.bg3h, bg4h = o.bg4h, min4h = o.min4h, max4h = o.max4h)
+            // One outcome per dose: the id comes from the dose, so a repeat insert (here or from another
+            // device) is ignored locally and on the server.
+            val id = UuidV7.deterministic(m.recordedAt, "outcome:${d.id}")
+            OutcomeEntity(id, m.userId, m.createdAt, m.recordedAt, doseId = d.id, bg2h = o.bg2h, bg3h = o.bg3h, bg4h = o.bg4h, min4h = o.min4h, max4h = o.max4h)
         }
         if (rows.isNotEmpty()) {
             db.outcomes().insertAll(rows)

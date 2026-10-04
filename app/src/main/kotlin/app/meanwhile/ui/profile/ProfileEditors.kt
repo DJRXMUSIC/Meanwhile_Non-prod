@@ -12,22 +12,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.meanwhile.data.profile.ProfileSource
-import app.meanwhile.data.profile.ProfileState
 import app.meanwhile.data.profile.ProfileStatus
-import app.meanwhile.domain.profile.Profile
 import app.meanwhile.domain.profile.ProfileChange
 import app.meanwhile.domain.profile.ProfileJson
 import app.meanwhile.domain.profile.ProfilePatch
+import app.meanwhile.domain.profile.ProfileValidation
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.common.ScreenScaffold
 import app.meanwhile.ui.common.SectionCard
+import app.meanwhile.ui.common.rememberSafeScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -67,16 +66,25 @@ private val SETTINGS = listOf(
 @Composable
 fun EditSettingsScreen(onBack: () -> Unit) {
     val c = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
-    val state by c.profiles.current.collectAsStateWithLifecycle(initialValue = ProfileState(Profile(), null))
+    val scope = rememberSafeScope()
+    // null until the real profile loads, so nothing is ever edited (or saved) on top of the defaults.
+    val loaded by c.profiles.current.collectAsStateWithLifecycle(initialValue = null)
     val values = remember { mutableStateMapOf<String, String>() }
     var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(state.version?.id) {
+    // Filled once: background versions (activations, 6 am F11) don't overwrite what's being typed.
+    LaunchedEffect(loaded != null) {
+        val state = loaded ?: return@LaunchedEffect
+        if (values.isNotEmpty()) return@LaunchedEffect
         SETTINGS.flatMap { it.second }.forEach { (path, _) ->
             values[path] = ProfilePatch.get(state.profile, path)?.jsonPrimitive?.contentOrNull ?: ""
         }
     }
     ScreenScaffold(title = "Edit settings", onBack = onBack) {
+        val state = loaded
+        if (state == null || values.isEmpty()) {
+            Text("Loading…")
+            return@ScreenScaffold
+        }
         Text("Saved as a new profile version (source: manual). Danny's edits apply immediately.", style = MaterialTheme.typography.bodySmall)
         SETTINGS.forEach { (section, fields) ->
             SectionCard(section) {
@@ -93,16 +101,30 @@ fun EditSettingsScreen(onBack: () -> Unit) {
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(onClick = {
-            val changes = SETTINGS.flatMap { it.second }.mapNotNull { (path, _) ->
+            val unreadable = mutableListOf<String>()
+            val changes = SETTINGS.flatMap { it.second }.mapNotNull { (path, label) ->
                 val old = ProfilePatch.get(state.profile, path)?.jsonPrimitive ?: return@mapNotNull null
-                val text = values[path] ?: return@mapNotNull null
+                val text = values[path]?.trim() ?: return@mapNotNull null
                 if (text == old.contentOrNull) return@mapNotNull null
                 val isInt = old.contentOrNull?.contains('.') == false
-                val new = if (isInt) text.toDoubleOrNull()?.toLong()?.let { JsonPrimitive(it) } else text.toDoubleOrNull()?.let { JsonPrimitive(it) }
-                new?.let { ProfileChange(path, old, it) }
+                val number = text.toDoubleOrNull()?.takeIf { it.isFinite() }
+                if (number == null || (isInt && number != Math.floor(number))) {
+                    unreadable += label + if (isInt) " (whole number)" else ""
+                    return@mapNotNull null
+                }
+                ProfileChange(path, old, if (isInt) JsonPrimitive(number.toLong()) else JsonPrimitive(number))
+            }
+            if (unreadable.isNotEmpty()) {
+                error = "Not saved — check: " + unreadable.joinToString()
+                return@Button
             }
             ProfilePatch.apply(state.profile, changes).fold(
                 onSuccess = { updated ->
+                    val problems = ProfileValidation.problems(updated)
+                    if (problems.isNotEmpty()) {
+                        error = "Not saved: " + problems.joinToString("; ")
+                        return@fold
+                    }
                     scope.launch {
                         if (changes.isNotEmpty()) {
                             c.profiles.saveVersion(updated, ProfileSource.MANUAL, ProfileStatus.ACCEPTED, "Manual: " + changes.joinToString { it.path }, changes = changes)
@@ -120,17 +142,22 @@ fun EditSettingsScreen(onBack: () -> Unit) {
 @Composable
 fun JsonEditScreen(path: String, onBack: () -> Unit) {
     val c = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
-    val state by c.profiles.current.collectAsStateWithLifecycle(initialValue = ProfileState(Profile(), null))
+    val scope = rememberSafeScope()
+    val loaded by c.profiles.current.collectAsStateWithLifecycle(initialValue = null)
     var text by remember { mutableStateOf("") }
     var loadedFor by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    val key = "${state.version?.id}:$path"
-    if (loadedFor != key) {
-        loadedFor = key
-        text = if (path.isBlank()) prettyJson(ProfileJson.encode(state.profile)) else prettyJson(ProfilePatch.get(state.profile, path)?.toString() ?: "{}")
-    }
     ScreenScaffold(title = if (path.isBlank()) "Profile JSON" else path, onBack = onBack) {
+        val state = loaded
+        if (state == null) {
+            Text("Loading…")
+            return@ScreenScaffold
+        }
+        // Loaded once per path: a new version arriving in the background (e.g. 6 am F11) doesn't wipe edits.
+        if (loadedFor != path) {
+            loadedFor = path
+            text = if (path.isBlank()) prettyJson(ProfileJson.encode(state.profile)) else prettyJson(ProfilePatch.get(state.profile, path)?.toString() ?: "{}")
+        }
         Text(
             "Advanced: change any value, add a factor (append to \"factors\"), or adjust windows/decay. Invalid JSON is rejected.",
             style = MaterialTheme.typography.bodySmall,
@@ -148,6 +175,11 @@ fun JsonEditScreen(path: String, onBack: () -> Unit) {
             }
             result.fold(
                 onSuccess = { updated ->
+                    val problems = ProfileValidation.problems(updated)
+                    if (problems.isNotEmpty()) {
+                        error = "Not saved: " + problems.joinToString("; ")
+                        return@fold
+                    }
                     scope.launch {
                         if (updated != state.profile) {
                             c.profiles.saveVersion(updated, ProfileSource.MANUAL, ProfileStatus.ACCEPTED, "Manual JSON edit: ${path.ifBlank { "profile" }}")

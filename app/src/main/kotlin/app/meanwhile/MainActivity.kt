@@ -18,6 +18,7 @@ import app.meanwhile.notify.Notifications
 import app.meanwhile.service.CgmService
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.nav.AppRoot
+import app.meanwhile.ui.nav.Routes
 import app.meanwhile.data.settings.ThemeMode
 import app.meanwhile.ui.theme.MeanwhileTheme
 
@@ -27,7 +28,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) openRequest = intent.getStringExtra(Notifications.EXTRA_OPEN)
+        if (savedInstanceState == null) openRequest = intent.openDestination()
         val container = (application as MeanwhileApp).container
         setContent {
             CompositionLocalProvider(LocalAppContainer provides container) {
@@ -61,9 +62,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra(Notifications.EXTRA_OPEN)?.let { openRequest = it }
+        intent.openDestination()?.let { openRequest = it }
     }
 }
+
+private fun Intent.openDestination(): String? =
+    getStringExtra(Notifications.EXTRA_OPEN)?.takeIf { Routes.isExternalDestination(it) }
 
 // Same scrims as the androidx defaults for three-button navigation.
 private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)

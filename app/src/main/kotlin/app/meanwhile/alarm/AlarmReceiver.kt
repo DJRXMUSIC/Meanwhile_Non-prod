@@ -45,7 +45,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val n = NotificationCompat.Builder(context, Notifications.CHANNEL_REMINDERS)
             .setSmallIcon(R.drawable.ic_stat_drop)
             .setContentTitle("Second injection: $units u")
-            .setContentText("Split dose from ${formatTime(intent.getLongExtra(Alarms.EXTRA_DUE, System.currentTimeMillis()) - 60 * 60_000L)} meal. Tap Log after injecting.")
+            .setContentText("Split dose, due ${formatTime(intent.getLongExtra(Alarms.EXTRA_DUE, System.currentTimeMillis()))}. Tap Log after injecting.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(Notifications.openAppIntent(context, null, Alarms.requestCode(proposalId) + 2))
@@ -66,10 +66,11 @@ class DoseActionReceiver : BroadcastReceiver() {
         val c = (context.applicationContext as MeanwhileApp).container
         c.appScope.launch {
             try {
-                c.nba.logSecond(proposalId, units)
+                val logged = c.nba.logSecond(proposalId, units)
                 Notifications.post(
                     context, Alarms.notificationId(proposalId), Notifications.CHANNEL_REMINDERS,
-                    "Logged $units u", "Second injection recorded.",
+                    if (logged) "Logged $units u" else "Already logged",
+                    if (logged) "Second injection recorded." else "This second injection was already recorded — nothing added.",
                 )
             } finally {
                 pending.finish()

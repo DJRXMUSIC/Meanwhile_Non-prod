@@ -3,12 +3,14 @@
 //   → { result, provider, model, latency_ms, fallback_used, attempts }
 // Secrets (set by Danny with `supabase secrets set`, never in the repo/APK/logs):
 //   GEMINI_API_KEY, ANTHROPIC_API_KEY; optional GEMINI_MODEL, CLAUDE_MODEL, GEMINI_FAST_MODEL,
-//   CLAUDE_FAST_MODEL, ALLOWED_USER_IDS (comma-separated; recommended because the repo is public).
+//   CLAUDE_FAST_MODEL. ALLOWED_USER_IDS (comma-separated user ids) is required: without it every call is
+//   refused, because the repo is public and anyone could otherwise sign up and spend the keys.
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { Ajv } from "npm:ajv@8.20.0";
 import { decodeJsonFields, type Job, schemas } from "./schemas.ts";
 import { available, call, modelFor, type Provider, ProviderError } from "./providers.ts";
 import { buildPrompt } from "./prompts.ts";
+import { allowedUser, readJsonObject } from "./guard.ts";
 
 const JOBS: Job[] = ["route", "estimate_meal", "update_profile", "learn_cycle"];
 const TIMEOUT_MS: Record<Job, number> = {
@@ -50,8 +52,8 @@ async function authorize(req: Request): Promise<string | Response> {
   });
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return json(401, { error: "invalid session" });
-  const allowed = (Deno.env.get("ALLOWED_USER_IDS") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (allowed.length > 0 && !allowed.includes(data.user.id)) return json(403, { error: "user not allowed" });
+  const access = allowedUser(data.user.id, Deno.env.get("ALLOWED_USER_IDS"));
+  if (!access.ok) return json(403, { error: access.error });
   return data.user.id;
 }
 
@@ -61,17 +63,14 @@ Deno.serve(async (req) => {
   const user = await authorize(req);
   if (user instanceof Response) return user;
 
-  let body: { job?: Job; payload?: unknown; provider_preference?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return json(400, { error: "body must be JSON" });
-  }
-  const job = body.job;
-  if (!job || !JOBS.includes(job)) return json(400, { error: `job must be one of ${JOBS.join(", ")}` });
+  const read = await readJsonObject(req);
+  if ("error" in read) return json(read.status, { error: read.error });
+  const body = read.body;
+  const job = body.job as Job;
+  if (typeof job !== "string" || !JOBS.includes(job)) return json(400, { error: `job must be one of ${JOBS.join(", ")}` });
 
   const { system, user: userText } = await buildPrompt(job, body.payload ?? {});
-  const preferred = order(body.provider_preference);
+  const preferred = order(typeof body.provider_preference === "string" ? body.provider_preference : undefined);
   const providers = preferred.filter(available);
   const attempts: Array<{ provider: Provider; model: string; ok: boolean; error?: string; latency_ms: number; validation?: string }> = [];
 

@@ -218,3 +218,33 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   is installed from Releases on one phone, size doesn't matter, and it avoids keep-rule risk around
   serialization and supabase-kt.
 
+## Security & robustness review (after M8)
+- **Repo stays public** (Danny's choice) and the legacy PWA files stay. Nothing secret is in the repo or
+  its history (scanned); the anon key in the APK is public by design.
+- **AI allowlist fails closed:** with `ALLOWED_USER_IDS` unset the `ai` function refuses every call.
+  Bodies are capped at 1 MB and must be a JSON object.
+- **CGM integrity:** any app can send xDrip's broadcast action and Android can't name the sender, so a
+  broadcast only triggers a fetch from xDrip+'s local web service; its own value is used only when that
+  service is unreachable. Readings stamped more than 2 min in the future are dropped everywhere (one
+  would otherwise stay "latest" and pin the BG used for doses).
+- **Profile validity** (domain `ProfileValidation`): values the math can't use — ICR/ISF/increment/
+  g-per-unit ≤ 0, NaN, insulin peak ≥ half the duration, hours outside 0–23 — block saving (editors,
+  revert, accepting AI/learn-cycle changes), are dropped from learn-cycle proposals, and make the engine
+  return "No dose" with the reasons instead of a silent 0 u. Not a caution limit: any computable value
+  is allowed.
+- **No double insulin:** main-screen actions run one at a time (double-tap ignored); a split's second
+  injection logs once per proposal (app + notification + double tap). Outcomes have one deterministic
+  id per dose and outcome tagging / the 6 am check are serialized.
+- **No silent typos:** unparseable meal grams, dose units, AI-proposal weights/windows and settings are
+  reported and block the action instead of becoming 0 / the default. An AI weight outside the factor's
+  bounds is flagged on the card (Danny still decides).
+- **Crash safety:** background scopes, the CGM service and every screen's button actions log/show
+  errors instead of crashing; an invalid xDrip+ address is refused on save and treated as a connection
+  error; only known screens can be opened from outside the app.
+- **CSV export** prefixes free text starting with `= + - @` with `'` so spreadsheets don't run it.
+- **CI:** third-party actions pinned to commit SHAs; signing and Supabase secrets are passed only to the
+  steps that use them; the decoded keystore is deleted after the build. The Supabase CLI itself stays on
+  `latest` (pinned action, official releases).
+- **Known limits:** a malicious app could still feed fake readings while xDrip+'s web service is off,
+  and anyone with the phone unlocked can use the app — there is no app lock (not in the spec).
+

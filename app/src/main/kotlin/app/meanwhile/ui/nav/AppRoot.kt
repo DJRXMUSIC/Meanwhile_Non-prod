@@ -1,12 +1,12 @@
 package app.meanwhile.ui.nav
 
+import app.meanwhile.ui.common.rememberSafeScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,6 +48,15 @@ object Routes {
 
     fun profileVersion(id: String) = "$PROFILE_VERSION/$id"
     fun profileJson(path: String) = "$PROFILE_JSON?path=$path"
+
+    private val UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+    private val externalDestinations = Regex("^(?:$MAIN|$SETTINGS|$MORNING|$STATS|$PROFILE|$SETUP|$REVIEW/$UUID|$PROFILE_VERSION/$UUID)$")
+
+    /**
+     * Screens a notification may open. The launcher activity is exported, so any app can start it with
+     * an "open" extra; anything else is ignored (an unknown route would crash navigation).
+     */
+    fun isExternalDestination(dest: String?): Boolean = dest != null && externalDestinations.matches(dest)
 }
 
 @Composable
@@ -55,7 +64,7 @@ fun AppRoot(openRequest: String?, onOpenHandled: () -> Unit) {
     val c = LocalAppContainer.current
     val auth by c.auth.state.collectAsStateWithLifecycle()
     val settings by c.settings.settings.collectAsStateWithLifecycle(initialValue = null)
-    val scope = rememberCoroutineScope()
+    val scope = rememberSafeScope()
 
     val s = settings
     when {

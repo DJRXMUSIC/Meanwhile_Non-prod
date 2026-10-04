@@ -1,5 +1,6 @@
 package app.meanwhile.ui.profile
 
+import app.meanwhile.ui.common.rememberSafeScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -13,7 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -25,6 +25,7 @@ import app.meanwhile.data.profile.ProfileStatus
 import app.meanwhile.data.profile.changes
 import app.meanwhile.data.profile.decodedProfile
 import app.meanwhile.domain.profile.Profile
+import app.meanwhile.domain.profile.ProfileValidation
 import app.meanwhile.domain.profile.display
 import app.meanwhile.format.formatDateTime
 import app.meanwhile.ui.common.LocalAppContainer
@@ -36,7 +37,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun VersionDetailScreen(id: String, onBack: () -> Unit, onOpen: (String) -> Unit) {
     val c = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberSafeScope()
     val v by produceState<ProfileVersionEntity?>(null, id) { value = c.profiles.byId(id) }
     val current by c.profiles.current.collectAsStateWithLifecycle(initialValue = ProfileState(Profile(), null))
     var message by remember { mutableStateOf<String?>(null) }
@@ -69,9 +70,15 @@ fun VersionDetailScreen(id: String, onBack: () -> Unit, onOpen: (String) -> Unit
             } else if (e.status in ProfileStatus.APPLIED && e.id != current.version?.id) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
+                        val restored = e.decodedProfile()
+                        val problems = ProfileValidation.problems(restored)
+                        if (problems.isNotEmpty()) {
+                            message = "Not reverted: " + problems.joinToString("; ")
+                            return@Button
+                        }
                         scope.launch {
                             val saved = c.profiles.saveVersion(
-                                e.decodedProfile(), ProfileSource.MANUAL, ProfileStatus.ACCEPTED, "Reverted to v${e.version}",
+                                restored, ProfileSource.MANUAL, ProfileStatus.ACCEPTED, "Reverted to v${e.version}",
                             )
                             message = "Saved as v${saved.version}"
                         }

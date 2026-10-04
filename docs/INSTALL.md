@@ -54,11 +54,14 @@ Updates: repeat steps 1–2 for a newer release and tap **Update** — or use Ob
 
 ## 4. Recommended repo settings
 
-- **Make the repo private** (the spec asks for private; it's currently public): **Settings** → **General**
-  → scroll to **Danger Zone** → **Change repository visibility** → **Make private**.
+- **Public or private:** the repo is public by your choice, which is fine — no keys are in it, your data
+  is protected by row-level security, new sign-ups are off (§5e) and the AI only answers the user ids in
+  `ALLOWED_USER_IDS` (§7). To make it private later: **Settings** → **General** → **Danger Zone** →
+  **Change repository visibility** → **Make private** (Obtainium then needs a token, §3).
 - **Default branch**: the repo's default branch still holds the old PWA. To make MeanwhileV4 the
   landing page (and to get a **Run workflow** button in Actions): **Settings** → **General** →
-  **Default branch** → switch icon → choose `claude/hopeful-galileo-pgut04` → **Update**.
+  **Default branch** → switch icon → choose `claude/hopeful-galileo-pgut04` → **Update**. Nothing is deleted —
+  the PWA stays on its own branch.
 
 ## 5. Supabase (M2) — cloud backup, sync and restore
 
@@ -115,7 +118,9 @@ Meanwhile reads your CGM from **xDrip+** running on the same phone (xDrip+ bridg
 1. In **xDrip+**: ☰ menu → **Settings** → **Inter-app settings**:
    - **xDrip Web Service** → **On** (Meanwhile polls `http://127.0.0.1:17580/sgv.json` every 60 s).
      Leave "Open Web Service" off — Meanwhile is on the same phone, no secret needed.
-   - **Broadcast locally** → **On** (instant readings in addition to polling).
+   - **Broadcast locally** → **On** (instant readings in addition to polling). Keep the web service on
+     too: Android can't tell which app sent a broadcast, so Meanwhile treats it as "fetch now" and takes
+     the reading from xDrip+'s web service; the broadcast value is only used if that service is off.
    - **Identify receiver** → type `app.meanwhile.v4` (lets xDrip+ wake Meanwhile even if it was killed).
 2. Install xDrip+ **before** (or reinstall Meanwhile after) so Android grants Meanwhile xDrip's
    broadcast permission. Polling works either way.
@@ -139,7 +144,7 @@ the repo, the APK, logs or chat.
    |---|---|
    | `GEMINI_API_KEY` | Gemini key |
    | `ANTHROPIC_API_KEY` | Anthropic key |
-   | `ALLOWED_USER_IDS` | your user id: **Authentication** → **Users** → click your email → copy **UID** |
+   | `ALLOWED_USER_IDS` | **required** — your user id: **Authentication** → **Users** → click your email → copy **UID**. Without it the function refuses every call (the repo is public, so this is what stops anyone else spending your keys). |
    | `GEMINI_FAST_MODEL` | `gemini-flash-latest` (optional: faster routing/estimates) |
 
    Optional model overrides (defaults shown): `GEMINI_MODEL` = `gemini-pro-latest`,

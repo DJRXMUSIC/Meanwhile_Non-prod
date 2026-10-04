@@ -2,6 +2,7 @@ package app.meanwhile.domain.dose
 
 import app.meanwhile.domain.factors.AppliedFactor
 import app.meanwhile.domain.profile.Profile
+import app.meanwhile.domain.profile.ProfileValidation
 import kotlinx.serialization.Serializable
 import kotlin.math.floor
 import kotlin.math.roundToLong
@@ -64,6 +65,8 @@ data class DoseResult(
     val leadTimeMin: Int?,
     val leadTimeSteps: List<String>,
     val warnings: List<String>,
+    /** Non-empty when the profile has values the math can't use; [finalUnits] is then 0 and not a dose. */
+    val profileProblems: List<String> = emptyList(),
 )
 
 object DoseEngine {
@@ -111,11 +114,18 @@ object DoseEngine {
 
         val addedUnits = input.pendingUnits.sumOf { it.units }
         val raw = round6(baseline * combined + addedUnits)
+        // A zero ICR/ISF/increment or a broken insulin curve must never quietly become "0 u".
+        val problems = buildList {
+            addAll(ProfileValidation.problems(profile))
+            if (!raw.isFinite()) add("the result isn't a number ($raw) — check the inputs")
+        }
+        val ok = problems.isEmpty()
+        if (!ok) warnings.add(0, "No dose: " + problems.joinToString("; "))
         val inc = d.unitIncrement
-        val finalUnits = maxOf(0L, floor(raw / inc + 0.5).toLong()).let { (it * inc).roundToLong().toInt() }
-        val suggestedCarbs = if (raw < 0) (-raw * d.icr).roundToLong().toInt() else null
+        val finalUnits = if (!ok) 0 else maxOf(0L, floor(raw / inc + 0.5).toLong()).let { (it * inc).roundToLong().toInt() }
+        val suggestedCarbs = if (ok && raw < 0) (-raw * d.icr).roundToLong().toInt() else null
 
-        val split = split(input, profile, finalUnits)
+        val split = if (ok) split(input, profile, finalUnits) else null
         val (lead, steps) = leadTime(input, profile)
 
         return DoseResult(
@@ -124,7 +134,7 @@ object DoseEngine {
             baseline = baseline, terms = terms, combinedUncapped = combinedUncapped, combined = combined,
             capped = capped, clampedAtZero = clampedAtZero, pendingUnits = input.pendingUnits, addedUnits = addedUnits,
             raw = raw, finalUnits = finalUnits, suggestedCarbsG = suggestedCarbs, split = split,
-            leadTimeMin = lead, leadTimeSteps = steps, warnings = warnings,
+            leadTimeMin = lead, leadTimeSteps = steps, warnings = warnings, profileProblems = problems,
         )
     }
 

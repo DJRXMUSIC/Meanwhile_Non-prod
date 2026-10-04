@@ -4,6 +4,7 @@ import app.meanwhile.data.settings.AppSettings
 import app.meanwhile.data.settings.SettingsStore
 import app.meanwhile.domain.cgm.CgmReading
 import app.meanwhile.domain.cgm.XdripSgv
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -46,18 +49,18 @@ class XdripWebSource(
                 readings.forEach { emit(it) }
                 readings.maxOfOrNull { it.timestamp }?.let { last = it }
                 onStatus(true, null)
-            } catch (e: IOException) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 onStatus(false, e.message ?: e::class.java.simpleName)
             }
             delay(s.xdripPollSeconds * 1000L)
         }
     }
 
-    /** One request; throws IOException on connection/HTTP errors. */
+    /** One request; throws IOException on connection/HTTP errors and for an invalid address. */
     suspend fun fetch(s: AppSettings, count: Int): List<CgmReading> = withContext(Dispatchers.IO) {
-        val base = s.xdripBaseUrl.trimEnd('/')
-        val path = "/" + s.xdripPath.trimStart('/')
-        val url = "$base$path?count=$count&sensor"
+        val url = urlFor(s.xdripBaseUrl, s.xdripPath, count) ?: throw IOException("Invalid xDrip+ address: ${s.xdripBaseUrl}")
         val request = Request.Builder().url(url).apply {
             if (s.xdripApiSecret.isNotBlank()) header("api-secret", sha1Hex(s.xdripApiSecret))
         }.build()
@@ -65,6 +68,12 @@ class XdripWebSource(
             if (!response.isSuccessful) throw IOException("xDrip+ answered HTTP ${response.code}")
             XdripSgv.parse(response.body.string(), name)
         }
+    }
+
+    companion object {
+        /** Null when [base] isn't a usable http(s) URL (e.g. typed without `http://`). */
+        fun urlFor(base: String, path: String, count: Int = 1): HttpUrl? =
+            "${base.trim().trimEnd('/')}/${path.trim().trimStart('/')}?count=$count&sensor".toHttpUrlOrNull()
     }
 
     private fun sha1Hex(text: String): String =

@@ -1,5 +1,6 @@
 package app.meanwhile.ui.settings
 
+import app.meanwhile.ui.common.rememberSafeScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +36,7 @@ import java.time.ZoneOffset
 fun ExportScreen(onBack: () -> Unit) {
     val c = LocalAppContainer.current
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberSafeScope()
     val today = LocalDate.now()
     var start by remember { mutableStateOf(today.minusDays(29)) }
     var end by remember { mutableStateOf(today) }

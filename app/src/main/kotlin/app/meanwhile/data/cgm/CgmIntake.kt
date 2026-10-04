@@ -2,6 +2,7 @@ package app.meanwhile.data.cgm
 
 import android.util.Log
 import app.meanwhile.data.settings.SettingsStore
+import app.meanwhile.domain.cgm.CgmReading
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,13 +40,30 @@ class CgmIntake(
             launch { web.live().collect { repo.save(listOf(it)) } }
             launch {
                 settings.settings.map { it.xdripBroadcastEnabled }.distinctUntilChanged().collectLatest { enabled ->
-                    if (enabled) {
-                        broadcast.live().collect {
-                            repo.save(listOf(it))
-                            status.update { s -> s.copy(lastBroadcastAt = System.currentTimeMillis()) }
-                        }
-                    }
+                    if (enabled) broadcast.live().collect { acceptBroadcast(it) }
                 }
+            }
+        }
+    }
+
+    /**
+     * Any app on the phone can send xDrip's broadcast action and Android can't tell us the sender, so a
+     * broadcast is a "new reading now" signal: the readings are fetched from xDrip+'s local web service
+     * and the broadcast's own value is only used when that service can't be reached at all.
+     */
+    suspend fun acceptBroadcast(reading: CgmReading) {
+        status.update { it.copy(lastBroadcastAt = System.currentTimeMillis()) }
+        val fromWeb = try {
+            web.fetchSince(reading.timestamp.minus(Duration.ofMinutes(15)))
+        } catch (e: IOException) {
+            null
+        }
+        if (fromWeb == null) {
+            repo.save(listOf(reading))
+        } else {
+            repo.save(fromWeb)
+            if (fromWeb.none { it.timestamp == reading.timestamp }) {
+                Log.w("CgmIntake", "broadcast reading at ${reading.timestamp} not confirmed by xDrip+ web service; ignored")
             }
         }
     }

@@ -15,6 +15,7 @@ import app.meanwhile.R
 import app.meanwhile.domain.cgm.CgmReading
 import app.meanwhile.domain.cgm.Trend
 import app.meanwhile.notify.Notifications
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,7 +33,9 @@ import java.util.Locale
  * CGM intake alive and shows the latest BG in a persistent notification (spec §13.3).
  */
 class CgmService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("CgmService", "task failed", e) },
+    )
     private var running = false
     private var staleNotified = false
 
@@ -56,7 +59,7 @@ class CgmService : Service() {
         scope.launch {
             while (true) {
                 delay(15 * 60_000L)
-                c.housekeeping()
+                runCatching { c.housekeeping() }
             }
         }
         val ticker = flow {

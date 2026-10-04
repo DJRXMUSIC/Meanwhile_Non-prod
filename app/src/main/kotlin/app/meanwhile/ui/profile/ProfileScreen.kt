@@ -1,5 +1,6 @@
 package app.meanwhile.ui.profile
 
+import app.meanwhile.ui.common.rememberSafeScope
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,7 +25,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,7 +56,7 @@ import java.time.Instant
 @Composable
 fun ProfileScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val c = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberSafeScope()
     val state by c.profiles.current.collectAsStateWithLifecycle(initialValue = ProfileState(Profile(), null))
     val versions by c.profiles.versions.collectAsStateWithLifecycle(initialValue = emptyList())
     val pendingFlow = remember { c.profiles.pendingFlow() }

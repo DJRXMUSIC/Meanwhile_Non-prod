@@ -16,6 +16,8 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -100,6 +102,10 @@ class AiClient(
         } catch (e: RestException) {
             // Non-2xx: the body (with per-provider attempts) is in `error`.
             (runCatching { parse(e.error) }.getOrNull()) to "HTTP ${e.response.status.value}"
+        } catch (e: TimeoutCancellationException) {
+            null to "timed out after ${timeoutMs + 15_000} ms"
+        } catch (e: CancellationException) {
+            throw e // the caller went away (screen closed, worker stopped): don't log a failure
         } catch (e: Exception) {
             null to (e.message ?: e::class.java.simpleName)
         }

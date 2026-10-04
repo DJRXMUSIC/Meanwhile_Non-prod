@@ -1,5 +1,6 @@
 package app.meanwhile.ui.auth
 
+import app.meanwhile.ui.common.rememberSafeScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AuthScreen(onSkip: () -> Unit) {
     val c = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberSafeScope()
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }

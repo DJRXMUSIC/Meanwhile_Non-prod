@@ -12,6 +12,7 @@ import app.meanwhile.domain.profile.ActiveFactor
 import app.meanwhile.domain.profile.ProfileChange
 import app.meanwhile.domain.profile.ProfileJson
 import app.meanwhile.domain.profile.ProfilePatch
+import app.meanwhile.domain.profile.ProfileValidation
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import java.time.Instant
@@ -45,6 +46,8 @@ class ProposalReview(
             else -> ProfileStatus.ACCEPTED
         }
         val updated = if (applied.isEmpty()) current else ProfilePatch.apply(current, applied).getOrThrow()
+        val problems = ProfileValidation.problems(updated)
+        require(problems.isEmpty()) { "these values would break the dose math — " + problems.joinToString("; ") + ". Edit or reject those changes." }
         val version = profiles.saveVersion(
             updated, pending.source, status,
             summary = "${if (applied.isEmpty()) "Rejected" else "Applied ${applied.size} of ${annotated.size}"}: ${pending.summary}".take(300),

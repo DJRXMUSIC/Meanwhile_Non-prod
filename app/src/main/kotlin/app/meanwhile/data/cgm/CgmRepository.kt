@@ -31,12 +31,17 @@ class CgmRepository(
 
     suspend fun latestNow(): CgmReading? = db.cgm().latest()?.toDomain()
 
-    /** Inserts new readings (dedupe by timestamp and deterministic id); returns how many were new. */
+    /**
+     * Inserts new readings (dedupe by timestamp and deterministic id); returns how many were new.
+     * Readings stamped in the future are dropped: one would otherwise stay "latest" (BG on screen and in
+     * the dose) until the clock caught up, and stop back-fill.
+     */
     suspend fun save(readings: List<CgmReading>): Int {
-        if (readings.isEmpty()) return 0
-        val userId = records.meta().userId
         val now = System.currentTimeMillis()
-        val rows = readings.distinctBy { it.timestamp }.map { r ->
+        val valid = readings.filter { it.timestamp.toEpochMilli() <= now + MAX_FUTURE_MS }
+        if (valid.isEmpty()) return 0
+        val userId = records.meta().userId
+        val rows = valid.distinctBy { it.timestamp }.map { r ->
             val ts = r.timestamp.toEpochMilli()
             CgmReadingEntity(
                 id = UuidV7.deterministic(ts, "cgm:$ts"),
@@ -53,5 +58,10 @@ class CgmRepository(
         val inserted = db.cgm().insertAll(rows).count { it != -1L }
         if (inserted > 0) onWrite()
         return inserted
+    }
+
+    private companion object {
+        /** Tolerance for phone/transmitter clock skew. */
+        const val MAX_FUTURE_MS = 2 * 60_000L
     }
 }

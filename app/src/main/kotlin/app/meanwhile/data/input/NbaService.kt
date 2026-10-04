@@ -11,6 +11,8 @@ import app.meanwhile.domain.dose.DoseEngine
 import app.meanwhile.domain.dose.DoseInput
 import app.meanwhile.domain.dose.DoseResult
 import app.meanwhile.domain.dose.SplitPlan
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -40,6 +42,10 @@ data class PendingSecond(
     val firstDoseAt: Long,
 )
 
+/** The profile has values the dose math can't use; the message lists them (nothing is stored). */
+class DoseUnavailableException(problems: List<String>) :
+    IllegalStateException("No dose: the profile has values the math can't use — " + problems.joinToString("; ") + ". Fix them in Profile → Edit settings.")
+
 /** Next Best Action + dose logging (spec §9.5, §9.6). Deterministic and offline. */
 class NbaService(
     private val db: AppDatabase,
@@ -55,6 +61,7 @@ class NbaService(
         val ctx = contexts.build(now)
         val input = ctx.input(meal.carbsG, meal.fatG, meal.proteinG, meal.liquidOrSugary, bgOverride)
         val result = DoseEngine.compute(input, ctx.profile.profile)
+        if (result.profileProblems.isNotEmpty()) throw DoseUnavailableException(result.profileProblems)
         val ms = (System.nanoTime() - started) / 1_000_000
         val stale = ctx.bgAgeMinutes == null || ctx.bgAgeMinutes > staleMinutes()
         val m = records.meta(now = now.toEpochMilli())
@@ -137,9 +144,19 @@ class NbaService(
         }
     }
 
-    /** Logs (or with [skipped], records skipping) a split's second injection. */
-    suspend fun logSecond(proposalId: String, units: Int, reason: String? = null, skipped: Boolean = false, now: Instant = Instant.now()) {
-        val first = db.doses().forProposal(proposalId).firstOrNull { it.splitPart == 1 }
+    private val secondLock = Mutex()
+
+    /**
+     * Logs (or with [skipped], records skipping) a split's second injection. Returns false when it was
+     * already logged — from the app and the notification, or a double tap — so insulin is never counted twice.
+     */
+    suspend fun logSecond(proposalId: String, units: Int, reason: String? = null, skipped: Boolean = false, now: Instant = Instant.now()): Boolean = secondLock.withLock {
+        val forProposal = db.doses().forProposal(proposalId)
+        if (forProposal.any { it.splitPart == 2 }) {
+            cancelSecond(proposalId)
+            return@withLock false
+        }
+        val first = forProposal.firstOrNull { it.splitPart == 1 }
         val proposed = first?.details?.let { secondUnitsOf(it) }
         val m = records.meta(now = now.toEpochMilli())
         db.doses().insert(
@@ -152,6 +169,7 @@ class NbaService(
         )
         cancelSecond(proposalId)
         onWrite()
+        true
     }
 
     /** Second injections that have a first part logged in the last 12 h and no second part yet. */

@@ -1,5 +1,6 @@
 package app.meanwhile.ui.morning
 
+import app.meanwhile.ui.common.rememberSafeScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
@@ -15,7 +16,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,6 +39,7 @@ import app.meanwhile.ui.common.SectionCard
 import app.meanwhile.ui.review.ChangeReviewList
 import app.meanwhile.ui.review.ReviewState
 import app.meanwhile.ui.theme.LocalGlucoseColors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -57,7 +58,7 @@ private data class Glance(
 @Composable
 fun MorningReportScreen(onDone: () -> Unit) {
     val c = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberSafeScope()
     val ai = LocalGlucoseColors.current.aiProposed
     var date by remember { mutableStateOf<LocalDate?>(null) }
     var running by remember { mutableStateOf(false) }
@@ -77,8 +78,15 @@ fun MorningReportScreen(onDone: () -> Unit) {
         // Catch-up: run the learn cycle before showing proposals if 1 am didn't complete (spec §11.1).
         if (!c.nightly.learnDone(d)) {
             running = true
-            c.nightly.learnCycleIfNeeded()
-            running = false
+            try {
+                c.nightly.learnCycleIfNeeded()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message = "Learn cycle failed: ${e.message ?: e::class.java.simpleName}"
+            } finally {
+                running = false
+            }
         }
         learn = c.nightly.learnResult(d)
         pending = c.nightly.pendingProposal(d)
@@ -143,9 +151,12 @@ fun MorningReportScreen(onDone: () -> Unit) {
                     OutlinedButton(onClick = {
                         scope.launch {
                             running = true
-                            c.nightly.learnCycleIfNeeded(force = true)
-                            running = false
-                            reload++
+                            try {
+                                c.nightly.learnCycleIfNeeded(force = true)
+                            } finally {
+                                running = false
+                                reload++
+                            }
                         }
                     }) { Text("Retry now") }
                 }

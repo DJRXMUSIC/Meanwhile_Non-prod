@@ -13,6 +13,15 @@ First complete build. Install: download the APK below → open → allow "instal
 - **Supabase analysis views** + `docs/ANALYSIS.md` (ready-made SQL for daily/hourly/monthly TIR, time-of-day and
   weekday patterns, proposal outcomes, AI reliability).
 
+### Hardening in this build
+- Values that would break the dose math (e.g. ICR 0) can't be saved or accepted, and if one ever reaches the
+  engine you get **"No dose" with the reason** instead of a silent 0 u.
+- Double-tapping **Log**, or logging a split's second injection both in the app and from the notification,
+  records insulin only once.
+- Typos in carbs/fat/protein, dose units or AI-proposal weights are flagged instead of becoming 0 / the default.
+- CGM readings from xDrip's broadcast are confirmed against xDrip+'s web service; future-dated readings are ignored.
+- The AI function now **requires** `ALLOWED_USER_IDS` (docs/INSTALL.md §7).
+
 ### What to try (first run, end to end)
 1. **Sign in** with the email/password account you created in Supabase (or "Use without an account for now" —
    everything except sync and AI works locally). Then **Settings → Open setup checklist** and allow each item (notifications,

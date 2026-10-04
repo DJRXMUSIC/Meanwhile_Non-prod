@@ -1,5 +1,6 @@
 package app.meanwhile.ui.settings
 
+import app.meanwhile.ui.common.rememberSafeScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,13 +16,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import app.meanwhile.data.cgm.XdripWebSource
 import app.meanwhile.data.settings.AppSettings
 import app.meanwhile.service.CgmService
 import app.meanwhile.ui.common.LocalAppContainer
@@ -32,7 +33,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun CgmSettingsSection(current: AppSettings) {
     val c = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberSafeScope()
     var url by remember { mutableStateOf(current.xdripBaseUrl) }
     var path by remember { mutableStateOf(current.xdripPath) }
     var secret by remember { mutableStateOf(current.xdripApiSecret) }
@@ -72,10 +73,15 @@ fun CgmSettingsSection(current: AppSettings) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = {
+                val base = url.trim().ifBlank { AppSettings.DEFAULT_XDRIP_URL }
+                if (XdripWebSource.urlFor(base, path.ifBlank { AppSettings.DEFAULT_XDRIP_PATH }) == null) {
+                    result = "Not saved: the address must start with http:// (e.g. ${AppSettings.DEFAULT_XDRIP_URL})"
+                    return@Button
+                }
                 scope.launch {
                     c.settings.update {
                         it.copy(
-                            xdripBaseUrl = url.trim().ifBlank { AppSettings.DEFAULT_XDRIP_URL },
+                            xdripBaseUrl = base,
                             xdripPath = path.trim().ifBlank { AppSettings.DEFAULT_XDRIP_PATH },
                             xdripApiSecret = secret.trim(),
                             xdripPollSeconds = poll.toIntOrNull() ?: 60,

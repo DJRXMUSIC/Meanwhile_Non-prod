@@ -76,7 +76,7 @@ class XdripManifestReceiver : BroadcastReceiver() {
         val container = (context.applicationContext as MeanwhileApp).container
         container.appScope.launch {
             try {
-                container.cgm.save(listOf(reading))
+                container.cgmIntake.acceptBroadcast(reading)
                 CgmService.start(context)
             } finally {
                 pending.finish()

@@ -3,6 +3,7 @@ import { Ajv } from "npm:ajv@8.20.0";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { decodeJsonFields, schemas } from "./schemas.ts";
 import { callGemini } from "./providers.ts";
+import { allowedUser, readJsonObject } from "./guard.ts";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
@@ -88,4 +89,25 @@ Deno.test("gemini: errors become ProviderError (so the other provider is tried)"
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+Deno.test("allowlist fails closed", () => {
+  assertEquals(allowedUser("u1", undefined).ok, false);
+  assertEquals(allowedUser("u1", " , ").ok, false);
+  assertEquals(allowedUser("u1", "u2").ok, false);
+  assertEquals(allowedUser("u1", "u2, u1").ok, true);
+});
+
+Deno.test("request body guards", async () => {
+  const post = (body: string, headers: Record<string, string> = {}) =>
+    new Request("http://x/ai", { method: "POST", body, headers });
+  assert("body" in await readJsonObject(post('{"job":"route"}')));
+  for (const bad of ["null", "[1]", "\"x\"", "not json"]) {
+    const r = await readJsonObject(post(bad));
+    assert("error" in r && r.status === 400, bad);
+  }
+  const big = await readJsonObject(post("{}", { "content-length": "5000000" }), 1000);
+  assert("error" in big && big.status === 413);
+  const bigBody = await readJsonObject(post(JSON.stringify({ x: "y".repeat(2000) })), 1000);
+  assert("error" in bigBody && bigBody.status === 413);
 });

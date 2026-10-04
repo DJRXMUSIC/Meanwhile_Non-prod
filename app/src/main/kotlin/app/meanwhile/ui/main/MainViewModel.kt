@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.meanwhile.data.input.AiProposalCard
 import app.meanwhile.data.input.DoseConfirmCard
+import app.meanwhile.data.input.DoseUnavailableException
 import app.meanwhile.data.input.FactorPickerCard
 import app.meanwhile.data.input.FactorUpdateCard
 import app.meanwhile.data.input.FactorUpdater
@@ -22,6 +23,7 @@ import app.meanwhile.data.profile.ProfileSource
 import app.meanwhile.data.profile.ProfileStatus
 import app.meanwhile.di.AppContainer
 import app.meanwhile.domain.router.RouteResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -155,14 +157,19 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
         session = session?.let { s -> s.copy(cards = s.cards.map { if (it.key == key) card else it }) }
     }
 
+    /** Runs one action at a time: a second tap while one is running (e.g. double-tapping Log) is ignored. */
     private fun run(block: suspend () -> Unit) {
+        if (busy) return
         busy = true
         viewModelScope.launch {
             try {
                 block()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val s = session
-                val err = InfoCard("err-${System.nanoTime()}", "Something went wrong: ${e.message ?: e::class.java.simpleName}", isError = true)
+                val text = if (e is DoseUnavailableException) e.message.orEmpty() else "Something went wrong: ${e.message ?: e::class.java.simpleName}"
+                val err = InfoCard("err-${System.nanoTime()}", text, isError = true)
                 session = s?.copy(cards = s.cards + err) ?: InputSession("", text, via, RouteResult(emptyList(), "offline"), listOf(err))
             } finally {
                 busy = false

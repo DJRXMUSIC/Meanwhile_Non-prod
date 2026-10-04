@@ -6,6 +6,7 @@ import app.meanwhile.domain.profile.Profile
 import app.meanwhile.domain.profile.ProfileChange
 import app.meanwhile.domain.profile.ProfileJson
 import app.meanwhile.domain.profile.ProfilePatch
+import app.meanwhile.domain.profile.ProfileValidation
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -64,7 +65,10 @@ object LearnMapping {
         for (sc in dto.settingChanges) {
             out += ProfileChange(sc.path, ProfilePatch.get(profile, sc.path), sc.new ?: JsonNull, sc.evidence)
         }
-        return out.filter { it.old != it.new && ProfilePatch.apply(profile, listOf(it)).isSuccess }
+        // Also dropped: a change that on its own leaves values the dose math can't use (e.g. ICR 0).
+        return out.filter { ch ->
+            ch.old != ch.new && ProfilePatch.apply(profile, listOf(ch)).getOrNull()?.let { ProfileValidation.problems(it).isEmpty() } == true
+        }
     }
 
     private fun change(profile: Profile, path: String, new: JsonElement, why: String) =

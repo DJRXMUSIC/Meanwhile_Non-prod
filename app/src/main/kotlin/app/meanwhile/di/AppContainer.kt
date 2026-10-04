@@ -33,6 +33,8 @@ import app.meanwhile.data.stats.StatsRepository
 import app.meanwhile.data.sync.SyncEngine
 import app.meanwhile.data.sync.SyncWorker
 import app.meanwhile.service.CgmService
+import android.util.Log
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,7 +50,10 @@ import java.util.concurrent.TimeUnit
 
 /** Manual dependency container (see docs/DECISIONS.md). One instance per process. */
 class AppContainer(val app: Application) {
-    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Background work; a failure is logged, never fatal (it would also take down CGM intake). */
+    val appScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("Meanwhile", "background task failed", e) },
+    )
 
     val db: AppDatabase by lazy { AppDatabase.build(app) }
     val settings: SettingsStore by lazy { SettingsStore(app) }

@@ -139,6 +139,15 @@ private fun AiProposalCardView(card: AiProposalCard, vm: MainViewModel) {
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
                         }
+                        val w = weights[i].toDoubleOrNull()
+                        when {
+                            weights[i].isNotBlank() && w == null -> Text("Weight isn't a number", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            windows[i].isNotBlank() && windows[i].toIntOrNull() == null -> Text("Window isn't a whole number of minutes", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            w != null && ((ch.minWeight != null && w < ch.minWeight) || (ch.maxWeight != null && w > ch.maxWeight)) -> Text(
+                                "Outside this factor's bounds (${ch.minWeight?.let { fmt(it) } ?: "–"} to ${ch.maxWeight?.let { fmt(it) } ?: "–"})",
+                                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                 }
                 ch.decay?.let { d -> Text("Decay: " + d.steps.joinToString { "${it.fromMinutes}m→${fmt(it.weight)}" }, style = MaterialTheme.typography.bodySmall, color = ai) }
@@ -148,8 +157,13 @@ private fun AiProposalCardView(card: AiProposalCard, vm: MainViewModel) {
             if (card.decision != null) {
                 Text("✓ ${card.decidedMessage ?: card.decision}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             } else {
+                // A typo in an edited field must not silently fall back to the default weight/window.
+                val unreadable = card.changes.indices.any { i ->
+                    checked[i] && card.changes[i].unitsAdd == null && card.changes[i].action != "deactivate" &&
+                        ((weights[i].isNotBlank() && weights[i].toDoubleOrNull() == null) || (windows[i].isNotBlank() && windows[i].toIntOrNull() == null))
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
+                    Button(enabled = !unreadable, onClick = {
                         var edited = false
                         val accepted = card.changes.mapIndexedNotNull { i, ch ->
                             if (!checked[i]) return@mapIndexedNotNull null
@@ -306,7 +320,9 @@ private fun EditDoseDialog(card: NbaCard, onDismiss: () -> Unit, onLog: (Int, In
             }
         },
         confirmButton = {
-            TextButton(enabled = now.isNotEmpty(), onClick = { onLog(now.toIntOrNull() ?: 0, later.toIntOrNull() ?: 0, reason) }) { Text("Log") }
+            val nowUnits = now.toIntOrNull()
+            val laterUnits = if (later.isEmpty()) 0 else later.toIntOrNull()
+            TextButton(enabled = nowUnits != null && laterUnits != null, onClick = { onLog(nowUnits ?: 0, laterUnits ?: 0, reason) }) { Text("Log") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -374,8 +390,13 @@ private fun MealMacrosCardView(card: MealMacrosCard, onConfirm: (MealDraft) -> U
                 Switch(liquid, { liquid = it })
                 Text("Liquid / sugary")
             }
+            // "45..5" must never silently become 0 g of carbs.
+            val unreadable = listOf("carbs" to carbs, "fat" to fat, "protein" to protein).filter { (_, v) -> v.isNotEmpty() && v.toDoubleOrNull() == null }
+            if (unreadable.isNotEmpty()) {
+                Text("Not a number: ${unreadable.joinToString { it.first }}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
             Button(
-                enabled = carbs.isNotEmpty() || fat.isNotEmpty() || protein.isNotEmpty(),
+                enabled = (carbs.isNotEmpty() || fat.isNotEmpty() || protein.isNotEmpty()) && unreadable.isEmpty(),
                 onClick = {
                     onConfirm(
                         card.draft.copy(

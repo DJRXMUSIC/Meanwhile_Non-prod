@@ -112,6 +112,9 @@ data class ProposedFactorChange(
     val startedMinutesAgo: Int?,
     val reason: String,
     val isNewFactor: Boolean = false,
+    /** The factor definition's bounds, to flag a proposed weight outside them (spec §7: AI sets weights within bounds). */
+    val minWeight: Double? = null,
+    val maxWeight: Double? = null,
 )
 
 data class AiProposalCard(

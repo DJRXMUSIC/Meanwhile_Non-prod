@@ -70,13 +70,18 @@ class CsvExporter(private val context: Context, private val sync: SyncEngine) {
         else -> value.toString()
     }
 
-    private fun escape(text: String): String =
-        if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + text.replace("\"", "\"\"") + "\"" else text
+    private fun escape(raw: String): String {
+        // Spreadsheet apps run cells that start with = + - @ as formulas; free text (meal descriptions,
+        // AI responses) is prefixed with ' so it opens as text. Plain numbers like -1.5 stay numbers.
+        val text = if (raw.isNotEmpty() && raw[0] in FORMULA_START && raw.toDoubleOrNull() == null) "'$raw" else raw
+        return if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + text.replace("\"", "\"\"") + "\"" else text
+    }
 
     private fun day(epochMillis: Long): String =
         DateTimeFormatter.ISO_LOCAL_DATE.format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
 
     private companion object {
         const val EXPORT_DIR = "exports"
+        val FORMULA_START = setOf('=', '+', '-', '@', '\t', '\r')
     }
 }

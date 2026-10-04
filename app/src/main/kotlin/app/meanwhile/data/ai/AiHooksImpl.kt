@@ -187,7 +187,7 @@ class AiHooksImpl(
                 windowMinutes = ch.windowMinutes, decay = ch.decayRule?.toDomain(),
                 unitsAdd = ch.unitsAdd ?: if (def.kind == FactorKind.UNITS_PER_EVENT) (ch.amount ?: 1.0) * (def.unitsPerEvent ?: 1.0) else null,
                 amount = ch.amount, preset = ch.preset, startedMinutesAgo = ch.startedMinutesAgo, reason = ch.reason,
-                isNewFactor = newDefs.any { it.id == def.id },
+                isNewFactor = newDefs.any { it.id == def.id }, minWeight = def.minWeight, maxWeight = def.maxWeight,
             )
         }
         // A new factor without an explicit change still gets activated with its proposed weight.
@@ -195,7 +195,7 @@ class AiHooksImpl(
             val def = nf.definition.toDomain()
             ProposedFactorChange(
                 def.id, def.name, def.kind, "activate", nf.weight ?: def.defaultWeight, def.window.minutes, def.decay,
-                null, null, null, null, nf.reason, isNewFactor = true,
+                null, null, null, null, nf.reason, isNewFactor = true, minWeight = def.minWeight, maxWeight = def.maxWeight,
             )
         }
         return changes + implicit
