@@ -57,10 +57,10 @@ class CsvExporter(private val context: Context, private val sync: SyncEngine) {
 
     private fun writeCsv(file: File, columns: List<String>, rows: List<JsonObject>) {
         file.bufferedWriter().use { w ->
-            w.write(columns.joinToString(",") { escape(it) })
+            w.write(columns.joinToString(",") { escapeCell(it) })
             w.write("\r\n")
             for (row in rows) {
-                w.write(columns.joinToString(",") { escape(cell(row[it])) })
+                w.write(columns.joinToString(",") { escapeCell(cell(row[it])) })
                 w.write("\r\n")
             }
         }
@@ -72,18 +72,20 @@ class CsvExporter(private val context: Context, private val sync: SyncEngine) {
         else -> value.toString()
     }
 
-    private fun escape(raw: String): String {
-        // Spreadsheet apps run cells that start with = + - @ as formulas; free text (meal descriptions,
-        // AI responses) is prefixed with ' so it opens as text. Plain numbers like -1.5 stay numbers.
-        val text = if (raw.isNotEmpty() && raw[0] in FORMULA_START && raw.toDoubleOrNull() == null) "'$raw" else raw
-        return if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + text.replace("\"", "\"\"") + "\"" else text
-    }
-
     private fun day(epochMillis: Long): String =
         DateTimeFormatter.ISO_LOCAL_DATE.format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
 
-    private companion object {
-        const val EXPORT_DIR = "exports"
-        val FORMULA_START = setOf('=', '+', '-', '@', '\t', '\r')
+    companion object {
+        private const val EXPORT_DIR = "exports"
+        private val FORMULA_START = setOf('=', '+', '-', '@', '\t', '\r')
+
+        /**
+         * One CSV cell. Spreadsheet apps run cells that start with = + - @ as formulas; free text (meal
+         * descriptions, AI responses) is prefixed with ' so it opens as text. Plain numbers stay numbers.
+         */
+        fun escapeCell(raw: String): String {
+            val text = if (raw.isNotEmpty() && raw[0] in FORMULA_START && raw.toDoubleOrNull() == null) "'$raw" else raw
+            return if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + text.replace("\"", "\"\"") + "\"" else text
+        }
     }
 }

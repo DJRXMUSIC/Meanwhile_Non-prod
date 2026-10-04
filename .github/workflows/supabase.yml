@@ -8,6 +8,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/functions/**'
+      - 'supabase/tests/**'
       - 'supabase/config.toml'
       - '.github/workflows/supabase.yml'
   workflow_dispatch:
@@ -17,7 +18,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Nothing is deployed unless these pass. No secrets in this job.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: SQL contract tests (every migration, RLS, append-only, views)
+        run: supabase/tests/run_sql_tests.sh
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: ${{ !cancelled() }}
+        with:
+          deno-version: v2.x
+
+      - name: Edge Function tests
+        if: ${{ !cancelled() }}
+        run: |
+          deno check --config supabase/functions/ai/deno.json supabase/functions/ai/index.ts
+          deno test --allow-env --allow-read --config supabase/functions/ai/deno.json supabase/functions/ai/ai_test.ts
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Secrets go only to the steps that use them; actions are pinned to commit SHAs.
@@ -25,15 +63,6 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version: v2.x
-
-      - name: Edge Function tests
-        run: |
-          deno check --config supabase/functions/ai/deno.json supabase/functions/ai/index.ts
-          deno test --allow-env --allow-read --config supabase/functions/ai/deno.json supabase/functions/ai/ai_test.ts
 
       - name: Check secrets
         id: check

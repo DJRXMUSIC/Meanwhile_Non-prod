@@ -5,7 +5,11 @@ on:
     branches: ['**']
     paths-ignore:
       - '**/*.md'
-      - 'supabase/**'
+      # migrations stay in: the app's sync contract test reads them
+      - 'supabase/functions/**'
+      - 'supabase/tests/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/supabase.yml'
       # legacy PWA files that still live in this repo
       - 'src/**'
       - 'public/**'
@@ -42,8 +46,28 @@ jobs:
           # The repo's default branch is not this app's branch, so allow cache writes everywhere.
           cache-read-only: false
 
-      - name: Domain unit tests (dose engine golden tests)
+      - name: Domain tests (dose engine golden tests, learning, router)
         run: ./gradlew -p domain test --console=plain
+
+      # No secrets here. Runs even if the domain tests failed, so one run shows every failure.
+      - name: App tests (Robolectric - database, sync contract, learning engine, NBA, logging)
+        if: ${{ !cancelled() }}
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        run: python3 scripts/junit-summary.py "Domain=domain/build/test-results" "App=app/build/test-results" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: failure()
+        with:
+          name: test-reports
+          path: |
+            domain/build/reports/tests/
+            app/build/reports/tests/
+            domain/build/test-results/
+            app/build/test-results/
+          retention-days: 14
 
       - name: Decode signing keystore
         env:
@@ -54,14 +78,14 @@ jobs:
             echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           fi
 
-      - name: App unit tests + release APK
+      - name: Release APK
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew :app:testDebugUnitTest :app:assembleRelease --console=plain
+        run: ./gradlew :app:assembleRelease --console=plain
 
       - name: Remove keystore
         if: always()

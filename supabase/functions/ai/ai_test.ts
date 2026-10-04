@@ -1,7 +1,8 @@
 // Run: deno test supabase/functions/ai/ai_test.ts (CI runs it in .github/workflows/supabase.yml)
 import { Ajv } from "npm:ajv@8.20.0";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
-import { decodeJsonFields, schemas } from "./schemas.ts";
+import { decodeJsonFields, type Job, schemas } from "./schemas.ts";
+import { buildPrompt } from "./prompts.ts";
 import { callGemini } from "./providers.ts";
 import { allowedUser, oldestUser, readJsonObject } from "./guard.ts";
 
@@ -123,4 +124,17 @@ Deno.test("request body guards", async () => {
   assert("error" in big && big.status === 413);
   const bigBody = await readJsonObject(post(JSON.stringify({ x: "y".repeat(2000) })), 1000);
   assert("error" in bigBody && bigBody.status === 413);
+});
+
+Deno.test("every job has a versioned prompt, built as shared context + job", async () => {
+  const header = (text: string) => text.match(/^<!-- prompt version: ([a-z_]+)-v(\d+) -->\n/);
+  const common = await Deno.readTextFile(new URL("./prompts/_common.md", import.meta.url));
+  assertEquals(header(common)?.[1], "common");
+  for (const job of Object.keys(schemas) as Job[]) {
+    const text = await Deno.readTextFile(new URL(`./prompts/${job}.md`, import.meta.url));
+    assertEquals(header(text)?.[1], job, `prompts/${job}.md needs "<!-- prompt version: ${job}-vN -->"`);
+    const { system, user } = await buildPrompt(job, { now: "2026-10-04T12:00:00Z" });
+    assert(system.startsWith(common.trimEnd()) && system.endsWith(text), job);
+    assert(user.includes('"now": "2026-10-04T12:00:00Z"'), job);
+  }
 });

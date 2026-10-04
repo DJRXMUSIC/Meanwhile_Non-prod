@@ -84,8 +84,8 @@ data class SyncStatus(
     val failingSince: Long? = null,
 )
 
-class SettingsStore(context: Context) {
-    private val store = context.applicationContext.settingsDataStore
+class SettingsStore(private val store: DataStore<Preferences>) {
+    constructor(context: Context) : this(context.applicationContext.settingsDataStore)
 
     private object Keys {
         val aiProvider = stringPreferencesKey("ai_provider")
