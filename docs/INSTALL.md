@@ -125,5 +125,32 @@ Meanwhile reads your CGM from **xDrip+** running on the same phone (xDrip+ bridg
 
 If you run a different bridge app, tell Claude which one — it can be added as another `CgmSource`.
 
+## 7. AI keys (M6) — you set these yourself; never paste them in chat
+
+The AI runs in a Supabase Edge Function (`ai`). Keys live only in Supabase's secret store — never in
+the repo, the APK, logs or chat.
+
+1. **Gemini key:** `https://aistudio.google.com/apikey` → **Create API key** → copy.
+2. **Anthropic key:** `https://console.anthropic.com/settings/keys` → **Create Key** → copy.
+3. Supabase dashboard → your project → **Edge Functions** (left sidebar) → **Secrets** →
+   **Add new secret**, one at a time:
+
+   | Name | Value |
+   |---|---|
+   | `GEMINI_API_KEY` | Gemini key |
+   | `ANTHROPIC_API_KEY` | Anthropic key |
+   | `ALLOWED_USER_IDS` | your user id: **Authentication** → **Users** → click your email → copy **UID** |
+   | `GEMINI_FAST_MODEL` | `gemini-flash-latest` (optional: faster routing/estimates) |
+
+   Optional model overrides (defaults shown): `GEMINI_MODEL` = `gemini-pro-latest`,
+   `CLAUDE_MODEL` = `claude-opus-5-5`, `CLAUDE_FAST_MODEL` (unset = same as `CLAUDE_MODEL`).
+4. Deploy the function: GitHub **Actions** → **supabase** → newest run → **Re-run all jobs** (uses the
+   access token from §5). In Supabase → **Edge Functions** you should now see `ai`.
+5. In the app: **Settings → AI provider** — Gemini first (default), Claude first, Gemini only, Claude only.
+
+**Fallback test:** temporarily delete the `GEMINI_API_KEY` secret (or change one character), send
+"pizza and a coffee" — it still works, via Claude; Settings → AI provider shows the last error, and
+the exported `ai_calls` CSV shows `fallback_used = true`. Restore the key afterwards.
+
 ---
-Later milestones add AI keys (M6) — it gets its own section here.
+Later milestones add the nightly learn cycle (M7) — it gets its own section here if anything is needed.

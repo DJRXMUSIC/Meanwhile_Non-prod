@@ -7,7 +7,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - M2 — data layer + Supabase: done (CI green)
 - M3 — CGM intake + foreground service: done (CI green)
 - M4 — dose engine + IOB: done (CI green, golden tests in CI)
-- M5 — input, routing, NBA, dose logging, profile: in progress
+- M5 — input, routing, NBA, dose logging, profile: done (CI green)
+- M6 — AI layer: in progress
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -132,3 +133,37 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   definitions, windows, decay, new factors). Both save `manual` versions; JSON is validated by
   decoding before saving.
 - **Revert** = new `manual` version copying the old profile (expired activations pruned).
+
+## AI layer (M6)
+- **Edge Function `ai`** (Deno): auth via the caller's Supabase JWT (`auth.getUser`), optional
+  `ALLOWED_USER_IDS` allowlist (recommended: the repo and APK are public), provider order from
+  `provider_preference`, Ajv validation against the job schema, fallback to the other provider on
+  error, timeout or schema failure. Prompts are versioned `prompts/*.md` deployed as static files.
+- **Claude** via the official TypeScript SDK (`npm:@anthropic-ai/sdk`), default `claude-opus-5-5`,
+  structured output (`output_config.format` JSON schema), effort per job (route/estimate `low`,
+  update `medium`, learn cycle `high`), always streamed (`finalMessage()`), cached system prompt, and
+  Anthropic's server-side refusal fallback (`fallbacks: "default"`). A refusal that still comes back
+  counts as a provider failure → Gemini is tried.
+- **Gemini** via REST `generateContent` with `responseMimeType: application/json` +
+  `responseJsonSchema` (verified against the official `@google/genai` package). Default
+  `gemini-pro-latest`; `GEMINI_FAST_MODEL` (e.g. `gemini-flash-latest`) for route/estimate.
+- **One schema for both providers**, in the strict structured-output subset: every object has
+  `additionalProperties: false`, all properties required, optional = nullable. Values whose type varies
+  (learn-cycle `old`/`new`) travel as JSON strings and are decoded back before returning.
+- **Schema extensions** (documented in `schemas.ts`): `update_profile` changes also carry `action`
+  (activate/deactivate), `started_minutes_ago`, `amount`, `preset`; `learn_cycle` adds
+  `setting_changes` (any tunable by profile path) so every number is reachable.
+- **Wall clock:** Edge Functions get ~150 s. If the first provider uses up the learn-cycle budget the
+  fallback is skipped and the response says `retry_with` (the app retries with that provider only).
+- **`ai_calls` are written by the app** (local-first, synced) for every call including failures,
+  with provider, model, latency, fallback flag, request summary, response, validation result.
+- **AI routing decides *what* each part is; numbers are parsed deterministically** from each span by
+  the offline parser (doses, macros), so the AI never supplies a dose amount.
+- **Online factor updates** show an inline AI proposal card (per-change accept, editable
+  weight/window, reject all). Accepting writes one version (`ai_update`, accepted or edited) with
+  factor events (source `ai`); rejecting writes a `rejected` version so acceptance rates are measurable.
+  Any open NBA card is recomputed after accepting (Update Profile first, then NBA).
+- **Offline queue:** when the network/session returns, queued `update_profile` calls run; the result
+  becomes a **pending** version + "AI refinement ready" notification → review screen (accept / edit /
+  reject each change). Decisions are re-applied onto the *current* profile.
+- **"AI offline" indicator** = configured but no network, no live session, or the last call failed.

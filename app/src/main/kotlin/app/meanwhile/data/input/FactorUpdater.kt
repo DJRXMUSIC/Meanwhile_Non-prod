@@ -9,6 +9,7 @@ import app.meanwhile.data.profile.ProfileSource
 import app.meanwhile.data.profile.ProfileStatus
 import app.meanwhile.data.profile.decodedProfile
 import app.meanwhile.domain.factors.Activations
+import app.meanwhile.domain.profile.DecayRule
 import app.meanwhile.domain.profile.FactorDefinition
 import app.meanwhile.domain.profile.FactorKind
 import app.meanwhile.domain.profile.Profile
@@ -46,6 +47,7 @@ class FactorUpdater(
         val amount: Double? = null,
         val unitsAdd: Double? = null,
         val windowMinutes: Int? = null,
+        val decay: DecayRule? = null,
         val at: Instant,
         val details: Map<String, String> = emptyMap(),
         val note: String? = null,
@@ -68,10 +70,14 @@ class FactorUpdater(
         versionSource: String,
         summary: String,
         aiCallId: String? = null,
+        newDefinitions: List<FactorDefinition> = emptyList(),
+        status: String = ProfileStatus.ACCEPTED,
         now: Instant = Instant.now(),
     ): Outcome {
         val before = profiles.current().profile
-        var profile = before
+        var profile = if (newDefinitions.isEmpty()) before else before.copy(
+            factors = before.factors.filterNot { f -> newDefinitions.any { it.id == f.id } } + newDefinitions,
+        )
         val views = mutableListOf<FactorChangeView>()
         val events = mutableListOf<FactorEventEntity>()
         for (r in requests) {
@@ -99,7 +105,7 @@ class FactorUpdater(
                     val window = r.windowMinutes ?: def.window.minutes
                     profile = Activations.activate(
                         profile, def.id, r.at.toEpochMilli(), eventSource, weight = r.weight, preset = r.preset,
-                        windowMinutes = r.windowMinutes, eventId = m.id, note = r.note,
+                        windowMinutes = r.windowMinutes, decay = r.decay, eventId = m.id, note = r.note,
                     )
                     events += event(m.id, m.userId, m.createdAt, m.recordedAt, def, "activate", weight, window, null, eventSource, inputId, details)
                     views += FactorChangeView(def.id, def.name, "activate", weight, null, windowText(def, window), r.note)
@@ -108,7 +114,7 @@ class FactorUpdater(
         }
         db.factorEvents().insertAll(events)
         val version = if (profile != before) {
-            profiles.saveVersion(profile, versionSource, ProfileStatus.ACCEPTED, summary, aiCallId = aiCallId, now = now)
+            profiles.saveVersion(profile, versionSource, status, summary, aiCallId = aiCallId, now = now)
         } else {
             null
         }

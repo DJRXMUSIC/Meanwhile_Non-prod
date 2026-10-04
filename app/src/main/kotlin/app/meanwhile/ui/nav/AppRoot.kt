@@ -24,6 +24,7 @@ import app.meanwhile.ui.profile.EditSettingsScreen
 import app.meanwhile.ui.profile.JsonEditScreen
 import app.meanwhile.ui.profile.ProfileScreen
 import app.meanwhile.ui.profile.VersionDetailScreen
+import app.meanwhile.ui.review.ReviewScreen
 import app.meanwhile.ui.settings.ExportScreen
 import app.meanwhile.ui.settings.SettingsScreen
 import app.meanwhile.ui.setup.SetupScreen
@@ -100,6 +101,12 @@ private fun AppNavHost(openRequest: String?, onOpenHandled: () -> Unit) {
             arguments = listOf(navArgument("id") { type = NavType.StringType }),
         ) { entry ->
             VersionDetailScreen(entry.arguments?.getString("id").orEmpty(), onBack = { nav.popBackStack() }, onOpen = { nav.navigate(it) })
+        }
+        composable(
+            "${Routes.REVIEW}/{id}",
+            arguments = listOf(navArgument("id") { type = NavType.StringType }),
+        ) { entry ->
+            ReviewScreen(entry.arguments?.getString("id").orEmpty(), onBack = { nav.popBackStack() })
         }
         composable(
             "${Routes.PROFILE_JSON}?path={path}",

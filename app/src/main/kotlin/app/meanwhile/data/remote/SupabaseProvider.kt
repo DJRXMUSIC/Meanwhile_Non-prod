@@ -6,6 +6,7 @@ import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.postgrest.Postgrest
+import kotlin.time.Duration.Companion.seconds
 
 object SupabaseProvider {
     val isConfigured: Boolean
@@ -18,6 +19,8 @@ object SupabaseProvider {
             supabaseUrl = BuildConfig.SUPABASE_URL,
             supabaseKey = BuildConfig.SUPABASE_ANON_KEY,
         ) {
+            // AI calls set their own (longer) per-request timeout.
+            requestTimeout = 30.seconds
             install(Auth)
             install(Postgrest)
             install(Functions)

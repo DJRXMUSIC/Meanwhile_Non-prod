@@ -96,3 +96,36 @@ data class DoseConfirmCard(
 data class FactorPickerCard(override val key: String, val text: String) : ResultCard
 
 data class InfoCard(override val key: String, val message: String, val isError: Boolean = false) : ResultCard
+
+/** One factor change the AI proposes (spec §9.4 online). Danny accepts, edits or rejects each. */
+data class ProposedFactorChange(
+    val factorId: String,
+    val name: String,
+    val kind: app.meanwhile.domain.profile.FactorKind,
+    val action: String,
+    val weight: Double?,
+    val windowMinutes: Int?,
+    val decay: app.meanwhile.domain.profile.DecayRule?,
+    val unitsAdd: Double?,
+    val amount: Double?,
+    val preset: String?,
+    val startedMinutesAgo: Int?,
+    val reason: String,
+    val isNewFactor: Boolean = false,
+)
+
+data class AiProposalCard(
+    override val key: String,
+    val inputId: String,
+    val text: String,
+    val callId: String,
+    val provider: String,
+    val model: String,
+    val fallbackUsed: Boolean,
+    val summary: String,
+    val changes: List<ProposedFactorChange>,
+    val newDefinitions: List<app.meanwhile.domain.profile.FactorDefinition>,
+    /** accepted | edited | rejected once decided. */
+    val decision: String? = null,
+    val decidedMessage: String? = null,
+) : ResultCard

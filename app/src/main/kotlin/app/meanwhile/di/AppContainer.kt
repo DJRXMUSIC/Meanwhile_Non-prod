@@ -9,6 +9,11 @@ import app.meanwhile.data.cgm.XdripBroadcastSource
 import app.meanwhile.data.cgm.XdripWebSource
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.alarm.Alarms
+import app.meanwhile.data.ai.AiClient
+import app.meanwhile.data.ai.AiHooksImpl
+import app.meanwhile.data.ai.AiQueueProcessor
+import app.meanwhile.data.ai.ProposalReview
+import app.meanwhile.data.net.NetworkMonitor
 import app.meanwhile.data.dose.DoseContextBuilder
 import app.meanwhile.data.input.AiHooks
 import app.meanwhile.data.input.FactorUpdater
@@ -28,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
@@ -78,8 +84,14 @@ class AppContainer(val app: Application) {
         )
     }
 
-    /** Replaced by the AI client in M6; the offline path never needs it. */
-    @Volatile var aiHooks: AiHooks = object : AiHooks {}
+    val network: NetworkMonitor by lazy { NetworkMonitor(app) }
+    val ai: AiClient by lazy { AiClient(supabase, db, records, auth, settings, network, ::requestSync) }
+    val aiHooksImpl: AiHooksImpl by lazy { AiHooksImpl(ai, db) }
+    val aiQueue: AiQueueProcessor by lazy { AiQueueProcessor(app, db, ai, aiHooksImpl, profiles) }
+    val review: ProposalReview by lazy { ProposalReview(db, records, profiles, ::requestSync) }
+
+    /** Online AI steps when Supabase is configured; the offline path never needs them. */
+    val aiHooks: AiHooks get() = if (supabase != null) aiHooksImpl else object : AiHooks {}
     val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync) { aiHooks } }
 
     fun requestSync() = SyncWorker.requestNow(app)
@@ -105,6 +117,12 @@ class AppContainer(val app: Application) {
         appScope.launch { rearmAlarms() }
         SyncWorker.schedulePeriodic(app)
         requestSync()
+        // Back online (or signed in): run AI calls queued while offline (spec §9.4).
+        appScope.launch {
+            combine(network.online, auth.state) { online, a -> online && a is AuthState.SignedIn && !a.offline }
+                .distinctUntilChanged()
+                .collect { ready -> if (ready) runCatching { aiQueue.runPending() } }
+        }
         // A (re)sign-in pulls everything missing locally — this is the restore path.
         appScope.launch {
             auth.state.filterIsInstance<AuthState.SignedIn>()

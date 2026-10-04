@@ -7,6 +7,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,11 +16,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.meanwhile.BuildConfig
 import app.meanwhile.data.remote.AuthState
+import app.meanwhile.data.settings.AiProviderPreference
 import app.meanwhile.data.settings.SyncStatus
 import app.meanwhile.data.sync.SyncOutcome
 import app.meanwhile.ui.common.LocalAppContainer
@@ -93,6 +96,21 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         }
 
         appSettings?.let { CgmSettingsSection(it) }
+
+        appSettings?.let { st ->
+            SectionCard("AI provider") {
+                val status by c.ai.status.collectAsStateWithLifecycle()
+                Text("Which model the AI layer tries first. Dose math never depends on it.", style = MaterialTheme.typography.bodySmall)
+                AiProviderPreference.entries.forEach { pref ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = st.aiProvider == pref, onClick = { scope.launch { c.settings.update { it.copy(aiProvider = pref) } } })
+                        Text(pref.label)
+                    }
+                }
+                status.lastOkAt?.let { Text("Last AI success ${relativeTime(it)}", style = MaterialTheme.typography.bodySmall) }
+                status.lastError?.let { Text("Last AI error: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
+        }
 
         SectionCard("Data") {
             Text("Export any date range as CSV (one file per table, plus a zip of all).")

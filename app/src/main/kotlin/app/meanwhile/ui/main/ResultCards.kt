@@ -14,6 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.meanwhile.data.input.AiProposalCard
 import app.meanwhile.data.input.DoseConfirmCard
 import app.meanwhile.data.input.FactorPickerCard
 import app.meanwhile.data.input.FactorUpdateCard
@@ -91,6 +93,79 @@ fun ResultCardView(card: ResultCard, profile: Profile, vm: MainViewModel) {
         is FeedbackSavedCard -> SimpleCard("Saved to feedback", card.text)
         is FactorPickerCard -> FactorPickerCardView(card, profile) { id, preset -> vm.pickFactor(card, id, preset) }
         is InfoCard -> SimpleCard(if (card.isError) "Problem" else "Note", card.message, isError = card.isError)
+        is AiProposalCard -> AiProposalCardView(card, vm)
+    }
+}
+
+/** AI-proposed factor changes: every value is marked AI-proposed until Danny accepts (spec §15). */
+@Composable
+private fun AiProposalCardView(card: AiProposalCard, vm: MainViewModel) {
+    val ai = LocalGlucoseColors.current.aiProposed
+    val checked = remember(card.key) { androidx.compose.runtime.mutableStateListOf(*Array(card.changes.size) { true }) }
+    val weights = remember(card.key) { androidx.compose.runtime.mutableStateListOf(*card.changes.map { it.weight?.let { w -> fmt(w) } ?: "" }.toTypedArray()) }
+    val windows = remember(card.key) { androidx.compose.runtime.mutableStateListOf(*card.changes.map { it.windowMinutes?.toString() ?: "" }.toTypedArray()) }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("AI proposal · Update Profile", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "${card.provider} · ${card.model}" + if (card.fallbackUsed) " (fallback)" else "",
+                style = MaterialTheme.typography.labelSmall, color = ai,
+            )
+            if (card.summary.isNotBlank()) Text(card.summary, color = ai)
+            card.changes.forEachIndexed { i, ch ->
+                HorizontalDivider()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(
+                        checked = checked[i], enabled = card.decision == null, onCheckedChange = { checked[i] = it },
+                    )
+                    Text(
+                        "${ch.factorId} ${ch.name}" + (if (ch.isNewFactor) " (new factor)" else "") + " · ${ch.action}",
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                if (ch.action != "deactivate") {
+                    if (ch.unitsAdd != null) {
+                        Text("+${fmt(ch.unitsAdd)} u until the next dose" + (ch.amount?.let { " (${fmt(it, 0)})" } ?: ""), color = ai)
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                weights[i], { v -> weights[i] = v.filter { it.isDigit() || it == '.' } }, label = { Text("Weight") },
+                                singleLine = true, enabled = card.decision == null, modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            )
+                            OutlinedTextField(
+                                windows[i], { v -> windows[i] = v.filter(Char::isDigit) }, label = { Text("Window min") },
+                                singleLine = true, enabled = card.decision == null, modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            )
+                        }
+                    }
+                }
+                ch.decay?.let { d -> Text("Decay: " + d.steps.joinToString { "${it.fromMinutes}m→${fmt(it.weight)}" }, style = MaterialTheme.typography.bodySmall, color = ai) }
+                ch.startedMinutesAgo?.takeIf { it > 0 }?.let { Text("Started $it min ago", style = MaterialTheme.typography.bodySmall) }
+                if (ch.reason.isNotBlank()) Text(ch.reason, style = MaterialTheme.typography.bodySmall, color = ai)
+            }
+            if (card.decision != null) {
+                Text("✓ ${card.decidedMessage ?: card.decision}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        var edited = false
+                        val accepted = card.changes.mapIndexedNotNull { i, ch ->
+                            if (!checked[i]) return@mapIndexedNotNull null
+                            val w = weights[i].toDoubleOrNull()
+                            val win = windows[i].toIntOrNull()
+                            if (w != ch.weight || win != ch.windowMinutes) {
+                                if (ch.unitsAdd == null && ch.action != "deactivate") edited = true
+                            }
+                            if (ch.unitsAdd != null || ch.action == "deactivate") ch else ch.copy(weight = w, windowMinutes = win)
+                        }
+                        vm.decideAi(card, accepted, edited)
+                    }) { Text("Accept") }
+                    TextButton(onClick = { vm.decideAi(card, emptyList(), false) }) { Text("Reject all") }
+                }
+            }
+        }
     }
 }
 

@@ -87,7 +87,8 @@ class InputProcessor(
         if (forcedPath == "factor_update" && factorIntents.isEmpty()) cards += FactorPickerCard("pick-$inputId", text)
 
         val meal = route.intents.filterIsInstance<MealIntent>().firstOrNull()
-        val coffeeOnly = meal == null && factorIntents.any { profile.factor(it.factorId)?.kind == FactorKind.UNITS_PER_EVENT }
+        val coffeeOnly = meal == null && factorIntents.any { profile.factor(it.factorId)?.kind == FactorKind.UNITS_PER_EVENT } &&
+            cards.none { it is AiProposalCard }
         when {
             meal != null && meal.hasMacros -> cards += nba.propose(
                 MealDraft(meal.description, meal.carbsG ?: 0.0, meal.fatG ?: 0.0, meal.proteinG ?: 0.0, meal.liquidOrSugary),
@@ -103,10 +104,12 @@ class InputProcessor(
     /** Online: AI proposal for Danny to accept. Offline: default weights now + queued AI refinement. */
     private suspend fun updateProfile(text: String, intents: List<FactorIntent>, profile: Profile, inputId: String, now: Instant): ResultCard {
         ai().updateProfile(text, intents, profile, inputId)?.let { return it }
+        val known = intents.filter { profile.factor(it.factorId) != null }
+        if (known.isEmpty()) return FactorPickerCard("pick-$inputId", text)
         val outcome = updater.apply(
-            requests = intents.map { updater.requestFrom(it, now) },
+            requests = known.map { updater.requestFrom(it, now) },
             inputId = inputId, eventSource = "offline", versionSource = ProfileSource.OFFLINE_FALLBACK,
-            summary = "Offline: " + intents.joinToString { "${it.factorId} ${it.action}${it.preset?.let { p -> " ($p)" } ?: ""}" },
+            summary = "Offline: " + known.joinToString { "${it.factorId} ${it.action}${it.preset?.let { p -> " ($p)" } ?: ""}" },
             now = now,
         )
         db.aiQueue().upsert(
@@ -114,7 +117,7 @@ class InputProcessor(
                 id = UuidV7.string(), job = "update_profile",
                 payload = buildJsonObject {
                     put("text", text)
-                    put("intents", AppJson.encodeToJsonElement(ListSerializer(FactorIntent.serializer()), intents))
+                    put("intents", AppJson.encodeToJsonElement(ListSerializer(FactorIntent.serializer()), known))
                 }.toString(),
                 inputId = inputId, fallbackVersionId = outcome.version?.id, createdAt = now.toEpochMilli(),
             ),

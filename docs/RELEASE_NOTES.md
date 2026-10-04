@@ -1,16 +1,16 @@
-## What to try (M5 — input, routing, Next Best Action, dose logging, profile)
+## What to try (M6 — AI layer)
 
-Works fully offline (try it in airplane mode).
+Setup: `docs/INSTALL.md` §7 — add your Gemini and Anthropic keys as Supabase secrets yourself,
+then re-run the **supabase** workflow to deploy the `ai` Edge Function.
 
-1. Type or tap the mic and say **"60 carbs 20 fat 10 protein"** → review the transcript → send.
-   The Next Best Action card shows the dose, lead time, BG/trend/age, profile callout and the full
-   breakdown. Tap **Log dose as shown** (or **Edit amount**, with an optional reason).
-2. Say **"had a coffee"** → profile card "Caffeine +1 u" and an NBA card for **+1 u**.
-3. **"pizza and a coffee"** → coffee applied first, then it asks for the pizza's carbs/fat/protein.
-4. **"ran 5 miles"**, **"two beers"**, **"slept badly"**, **"took 6 units"**,
-   **"took my long-acting 22"**, **"app note: …"** — each shows which path it took; tap a different
-   path chip to re-route.
-5. A high fat + protein meal (e.g. 80 C / 40 F / 25 P) → split plan; the second-injection reminder
-   arrives at meal start + 60 min with a **Log** button.
-6. **Profile** (person icon): active factors (End / Activate a factor), settings, IOB curve, factor
-   definitions, version history → tap a version → **Revert**.
+1. Online, say **"two slices of pepperoni pizza and a coffee"**: the path line shows `ai router`;
+   you get an **AI proposal** (caffeine +1 u) to Accept / edit / Reject, and an **AI estimate** of the
+   pizza's carbs/fat/protein to confirm or edit before the dose is calculated.
+2. **"ran 4 miles hard, finished 20 minutes ago"** → the AI proposes an exercise weight and window;
+   edit the weight before accepting if you like. Every AI value is shown in purple until accepted.
+3. Offline (airplane mode), say **"had two beers"** → the default weight applies immediately and an AI
+   refinement is queued. Turn data back on → a notification "AI refinement ready" → review each
+   change (Accept / Edit / Reject).
+4. **Settings → AI provider**: switch between Gemini first / Claude first / only one. The top bar
+   shows **AI offline** whenever the AI can't be reached — dose math keeps working regardless.
+5. Fallback test (INSTALL §7): break the Gemini key; requests still succeed via Claude.

@@ -215,11 +215,20 @@ private fun InputBar(vm: MainViewModel) {
     }
 }
 
-/** "AI offline" indicator (spec §10.6). Shown only when AI is configured but unreachable. */
+/**
+ * "AI offline" indicator (spec §10.6): AI configured but the network is down, there's no live session,
+ * or the most recent AI call failed.
+ */
 @Composable
 fun AiIndicator() {
     val c = LocalAppContainer.current
-    if (!c.aiHooks.online && c.supabase != null) {
+    if (c.supabase == null) return
+    val online by c.network.online.collectAsStateWithLifecycle()
+    val auth by c.auth.state.collectAsStateWithLifecycle()
+    val status by c.ai.status.collectAsStateWithLifecycle()
+    val signedIn = auth is app.meanwhile.data.remote.AuthState.SignedIn && !(auth as app.meanwhile.data.remote.AuthState.SignedIn).offline
+    val lastFailed = (status.lastErrorAt ?: 0) > (status.lastOkAt ?: 0)
+    if (!online || !signedIn || lastFailed) {
         Text("AI offline", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(end = 4.dp))
     }
 }

@@ -1,2 +1,9 @@
 # Supabase CLI config for MeanwhileV4. Deploys run from .github/workflows/supabase.yml.
 project_id = "meanwhile"
+
+[functions.ai]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/ai/index.ts"
+# Prompts are versioned markdown files read at runtime.
+static_files = ["./functions/ai/prompts/*.md"]
