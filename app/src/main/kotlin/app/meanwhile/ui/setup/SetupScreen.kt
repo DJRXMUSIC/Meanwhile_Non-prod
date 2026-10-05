@@ -132,7 +132,7 @@ fun SetupScreen(onBack: () -> Unit) {
                 "Cloud backup",
                 c.supabase != null && authState is AuthState.SignedIn,
                 when {
-                    c.supabase == null -> "not in this build (add SUPABASE_URL/KEY secrets)"
+                    c.supabase == null -> "not in this build (add the SUPABASE_ACCESS_TOKEN secret)"
                     authState !is AuthState.SignedIn -> "not signed in"
                     syncStatus.failingSince != null -> "sync failing since ${relativeTime(syncStatus.failingSince!!)}"
                     pending > 0 -> "$pending records waiting"

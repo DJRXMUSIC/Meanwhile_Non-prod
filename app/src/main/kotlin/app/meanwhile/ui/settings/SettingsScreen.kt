@@ -84,7 +84,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             when (val a = auth) {
                 AuthState.NotConfigured -> Text(
                     "This build has no Supabase settings, so everything stays on the phone. " +
-                        "Add SUPABASE_URL and SUPABASE_ANON_KEY as GitHub secrets and install a new release.",
+                        "Add the SUPABASE_ACCESS_TOKEN GitHub secret (docs/INSTALL.md) and install the next release.",
                 )
                 is AuthState.SignedIn -> {
                     Text("Signed in as ${a.email ?: a.userId}" + if (a.offline) " (offline — will reconnect)" else "")

@@ -1,7 +1,7 @@
 name: supabase
 
 # Applies SQL migrations and deploys Edge Functions to Danny's Supabase project.
-# Needs secrets SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD (docs/INSTALL.md).
+# Needs only the SUPABASE_ACCESS_TOKEN secret (docs/INSTALL.md); the android workflow creates the project.
 on:
   push:
     branches: ['**']
@@ -9,6 +9,7 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/functions/**'
       - 'supabase/tests/**'
+      - 'scripts/ci/**'
       - 'supabase/config.toml'
       - '.github/workflows/supabase.yml'
   workflow_dispatch:
@@ -43,6 +44,10 @@ jobs:
       - name: SQL contract tests (every migration, RLS, append-only, views)
         run: supabase/tests/run_sql_tests.sh
 
+      - name: Setup automation tests (scripts/ci against a mock Management API)
+        if: ${{ !cancelled() }}
+        run: python3 scripts/ci/test_supabase_setup.py
+
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         if: ${{ !cancelled() }}
         with:
@@ -64,71 +69,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check secrets
-        id: check
+      - name: Supabase (schema, auth)
+        id: supabase
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
-          if [ -n "$SUPABASE_ACCESS_TOKEN" ] && [ -n "$PROJECT_REF" ] && [ -n "$SUPABASE_DB_PASSWORD" ]; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Supabase deploy skipped — add SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF and SUPABASE_DB_PASSWORD secrets (docs/INSTALL.md)."
-          fi
+          echo "## Setup status (docs/INSTALL.md)" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/supabase_setup.py backend
 
       - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3
-        if: steps.check.outputs.ok == 'true'
+        if: steps.supabase.outputs.ref != ''
         with:
           version: latest
 
-      - name: Link project
-        if: steps.check.outputs.ok == 'true'
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-        run: supabase link --project-ref "$PROJECT_REF"
-
-      - name: Apply migrations
-        if: steps.check.outputs.ok == 'true'
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: echo y | supabase db push
-
       - name: Deploy Edge Functions
-        if: steps.check.outputs.ok == 'true' && hashFiles('supabase/functions/ai/index.ts') != ''
+        if: steps.supabase.outputs.ref != ''
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          PROJECT_REF: ${{ steps.supabase.outputs.ref }}
         run: supabase functions deploy ai --project-ref "$PROJECT_REF"
-
-      - name: Auto-configure Supabase auth
-        if: always()
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-        run: |
-          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$PROJECT_REF" ]; then exit 0; fi
-          api="https://api.supabase.com/v1/projects/$PROJECT_REF"
-          hdr="Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
-          # Account creation stays one step: no email-confirmation link.
-          curl -sf -X PATCH "$api/config/auth" -H "$hdr" -H "content-type: application/json" \
-            -d '{"mailer_autoconfirm": true}' > /dev/null || echo "::warning::could not set mailer_autoconfirm"
-          users=$(curl -sf -X POST "$api/database/query" -H "$hdr" -H "content-type: application/json" \
-            -d '{"query": "select count(*)::int as n from auth.users"}' \
-            | python3 -c 'import sys, json; d = json.load(sys.stdin); print(d[0]["n"] if isinstance(d, list) and d else "")' \
-            2> /dev/null || echo "")
-          if [ -n "$users" ] && [ "$users" -ge 1 ] 2> /dev/null; then
-            # An account exists (Danny's): nobody else gets to create one.
-            if curl -sf -X PATCH "$api/config/auth" -H "$hdr" -H "content-type: application/json" \
-              -d '{"disable_signup": true}' > /dev/null; then
-              echo "- :lock: Sign-ups disabled ($users account(s) exist) — nothing to do" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "::warning::could not disable sign-ups — see docs/INSTALL.md §5e"
-            fi
-          else
-            echo "- :unlock: No account yet — create yours in the app; the next build locks sign-ups automatically" >> "$GITHUB_STEP_SUMMARY"
-          fi

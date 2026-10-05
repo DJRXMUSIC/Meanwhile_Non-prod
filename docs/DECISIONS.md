@@ -369,3 +369,29 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   each failure's message + stack top (paste-ready for an AI assistant); full reports upload on
   failure. Supabase deploys only after the SQL and Deno tests pass.
 - `scripts/test-all.sh` runs whatever the local machine supports and skips the rest.
+
+## Setup automation (1.3)
+- **One token runs the backend.** `scripts/ci/supabase_setup.py` uses the Supabase Management API
+  with `SUPABASE_ACCESS_TOKEN` to find or create the project (`meanwhile-v4`, us-east-1; creates an
+  organization if the account has none), wait for it (waking it if paused), apply migrations,
+  configure auth (auto-confirm; sign-ups locked once an account exists), check the AI function
+  and report which AI keys are set. The build gets the project URL and anon key from it, so the
+  `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_PROJECT_REF` / `SUPABASE_DB_PASSWORD` secrets
+  are no longer needed (still honored).
+- **Migrations without a database password:** each file runs through the API's SQL endpoint as one
+  implicit transaction (file + history row together), recorded in
+  `supabase_migrations.schema_migrations` like the Supabase CLI does. An advisory lock serializes
+  concurrent runs (both workflows fire on one push); `create … if not exists` alone isn't safe
+  against a concurrent run — the new tests caught exactly that race.
+- **The old PWA's project is never touched:** only a project named `meanwhile-v4` (or an *empty*
+  `meanwhile`) is used; one already holding other tables is skipped (and refused if named
+  explicitly); a paused project is only woken if it's ours by name.
+- **CI writes no secrets.** Copying the AI keys from GitHub into Supabase and keeping a CI-generated
+  signing key in Supabase would have cut setup to a single secret, but automated secret-store writes
+  were declined in review; the AI keys stay Danny's own step in Supabase (as the spec says) and the
+  signing key stays a GitHub secret. Signing needs only `KEYSTORE_BASE64` + `KEYSTORE_PASSWORD`
+  (alias and key password default to the generated keystore's).
+- The generated database password is used once to create the project and not kept; Danny resets it
+  in the dashboard if he ever wants a direct connection.
+- Tested end to end against a mock Management API whose SQL runs on real Postgres
+  (`scripts/ci/test_supabase_setup.py`, in the supabase workflow's test job).

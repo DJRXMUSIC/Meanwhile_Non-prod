@@ -24,6 +24,9 @@ First complete build. Install: download the APK below → open → allow "instal
   stack trace, failed AI calls, the learning state and the log — with keys, tokens and emails
   stripped. Paste it into any AI coding assistant. **Share** sends it as a file; **Log** shows the
   raw app log. A badge shows how many warnings/errors happened in the last day.
+- **Setup is much shorter** (`docs/INSTALL.md`): three GitHub secrets and one re-run — CI now creates
+  and maintains the Supabase project itself (no project to create, no URL/key/password to copy),
+  and leaves your old PWA's project alone. The AI keys still go into Supabase by you.
 - **Much bigger test suite** behind every build: database migrations, sync, dose logging, CGM
   intake, the learning loop and diagnostics are tested on every push, alongside the dose-engine golden
   tests and the Supabase security rules.

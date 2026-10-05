@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs every test suite that this machine can run, then prints one summary (docs/TESTING.md).
 #   scripts/test-all.sh            all suites; ones whose tools are missing are skipped, not failed
-#   scripts/test-all.sh domain     just one: domain | app | sql | deno
+#   scripts/test-all.sh domain     just one: domain | app | sql | setup | deno
 set -uo pipefail
 cd "$(dirname "$0")/.."
 only="${1:-}"
@@ -26,8 +26,10 @@ fi
 
 if command -v psql >/dev/null && psql -q -d postgres -c 'select 1' >/dev/null 2>&1; then
   run sql supabase/tests/run_sql_tests.sh
+  run setup python3 scripts/ci/test_supabase_setup.py
 else
   skip sql "no reachable Postgres (set PGHOST/PGPORT/PGUSER); CI runs these when supabase/ changes"
+  skip setup "needs Postgres too (setup automation against a mock Supabase API)"
 fi
 
 if command -v deno >/dev/null; then

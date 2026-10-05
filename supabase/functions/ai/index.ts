@@ -72,7 +72,7 @@ async function authorize(req: Request): Promise<string | Response> {
   if ("checkFirstUser" in access) {
     const first = await firstUserId();
     if (first === null || first !== data.user.id) {
-      return json(403, { error: "only this project's first account may use the AI (or set ALLOWED_USER_IDS — docs/INSTALL.md §7)" });
+      return json(403, { error: "only this project's first account may use the AI (or set ALLOWED_USER_IDS — docs/INSTALL.md, Reference)" });
     }
     return data.user.id;
   }

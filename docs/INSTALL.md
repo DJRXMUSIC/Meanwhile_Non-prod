@@ -1,176 +1,125 @@
 # Setup & install (for Danny)
 
-Everything here is one-time unless noted. Steps are written for a desktop browser on github.com
-unless they say "on the Pixel".
+About 15 minutes, once. After that everything runs itself: every push builds, tests, signs and
+publishes a Release; CI creates and maintains your Supabase project (database schema, AI function,
+auth settings) and locks sign-ups once your account exists. Every CI run's **Summary** page has a
+**Setup status** checklist showing what's done and what (if anything) is still missing.
 
 ---
 
-## 1. Signing secrets (M1)
+## 1. Collect three values (computer)
 
-Claude generated your release keystore and sent you three files in chat:
-`meanwhilev4-release.jks`, `KEYSTORE_BASE64.txt`, `keystore-secrets.txt`.
+1. **Supabase access token** — lets CI set up and maintain the backend for you.
+   `https://supabase.com/dashboard/account/tokens` (sign in with GitHub — your old PWA account works)
+   → **Generate new token** → name `github-actions` → copy.
+2. **Signing key** — the files Claude sent you in chat: `KEYSTORE_BASE64.txt` and
+   `keystore-secrets.txt` (plus `meanwhilev4-release.jks`). **Back them up offline** (USB stick and/or
+   password manager): every future update must be signed with this same key. Lost the files? Ask
+   Claude for a new pair — nothing is installed yet, so a new key costs nothing today.
 
-**Back them up offline first** (USB stick and/or password manager). If the keystore is lost, future
-updates can't install over the existing app — you'd have to uninstall (local data is restored from
-Supabase, but it's a hassle). Never commit them to the repo.
+## 2. Add them as GitHub secrets, then run CI once
 
-Add four repository secrets:
-
-1. Open `https://github.com/DJRXMUSIC/Meanwhile_Non-prod`.
-2. **Settings** (top tab) → left sidebar **Secrets and variables** → **Actions**.
-3. Click **New repository secret** and add each of these (Name exactly as shown, Secret = value):
+1. `https://github.com/DJRXMUSIC/Meanwhile_Non-prod` → **Settings** → **Secrets and variables** →
+   **Actions** → **New repository secret**, three times:
 
    | Name | Value |
    |---|---|
+   | `SUPABASE_ACCESS_TOKEN` | the token from step 1 |
    | `KEYSTORE_BASE64` | the whole contents of `KEYSTORE_BASE64.txt` (one long line) |
-   | `KEYSTORE_PASSWORD` | from `keystore-secrets.txt` |
-   | `KEY_ALIAS` | `meanwhile` |
-   | `KEY_PASSWORD` | from `keystore-secrets.txt` (same as `KEYSTORE_PASSWORD`) |
+   | `KEYSTORE_PASSWORD` | `KEYSTORE_PASSWORD` from `keystore-secrets.txt` |
 
-4. Re-run the latest build so it signs and publishes a Release:
-   **Actions** tab → click the newest **android** run → **Re-run all jobs** (top right) → **Re-run jobs**.
-   After ~6–10 minutes a new Release appears under **Releases** on the repo's main page.
+2. **Actions** tab → newest **android** run → **Re-run all jobs**.
 
-## 2. Install on the Pixel 9a
+The first run takes ~15 minutes: it creates a Supabase project named **`meanwhile-v4`** (US East),
+applies the database schema, deploys the AI function, builds the app with your project's address
+baked in, signs it and publishes a **Release**. Its Summary page shows the checklist.
 
-1. On the Pixel, open Chrome → `https://github.com/DJRXMUSIC/Meanwhile_Non-prod/releases/latest`.
-2. Under **Assets**, tap `MeanwhileV4-<version>.apk`.
-3. When Chrome asks, tap **Settings** → enable **Allow from this source** → back → **Install**.
-4. If Play Protect says the app is unknown: **More details → Install anyway**.
-5. Open **Meanwhile**.
+> CI never touches your other Supabase projects (like the old PWA's). It only uses a project named
+> `meanwhile-v4` — or an *empty* one named `meanwhile` — and refuses any project that already holds
+> other tables. Supabase's free plan allows two active projects.
 
-Updates: repeat steps 1–2 for a newer release and tap **Update** — or use Obtainium (below).
+## 3. AI keys — you add these in Supabase yourself; never paste them in chat
 
-## 3. Optional: automatic updates with Obtainium
-
-1. On the Pixel, install Obtainium from `https://github.com/ImranR98/Obtainium/releases/latest`
-   (download the `app-arm64-v8a-release.apk`, install as above) or from F-Droid.
-2. On the Pixel, tap this link to add Meanwhile in one step:
-   `https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https%3A%2F%2Fgithub.com%2FDJRXMUSIC%2FMeanwhile_Non-prod`
-   — or in Obtainium: **Add App** → App source URL: `https://github.com/DJRXMUSIC/Meanwhile_Non-prod` → **Add**.
-3. Obtainium checks for new Releases and offers one-tap updates.
-4. If you make the repo private, Obtainium needs a GitHub token: GitHub → your avatar → **Settings** →
-   **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token** →
-   Repository access: *Only select repositories* → this repo → Permissions: **Contents: Read-only** →
-   Generate. In Obtainium: **Settings** → **Sources** → GitHub → paste the token.
-
-## 4. Recommended repo settings
-
-- **Public or private:** the repo is public by your choice, which is fine — no keys are in it, your data
-  is protected by row-level security, new sign-ups are off (§5e) and the AI only answers the user ids in
-  `ALLOWED_USER_IDS` (§7). To make it private later: **Settings** → **General** → **Danger Zone** →
-  **Change repository visibility** → **Make private** (Obtainium then needs a token, §3).
-- **Default branch**: the repo's default branch still holds the old PWA. To make MeanwhileV4 the
-  landing page (and to get a **Run workflow** button in Actions): **Settings** → **General** →
-  **Default branch** → switch icon → choose `claude/hopeful-galileo-pgut04` → **Update**. Nothing is deleted —
-  the PWA stays on its own branch.
-
-## 5. Supabase (M2) — cloud backup, sync and restore
-
-**a) Create the project**
-1. Go to `https://supabase.com/dashboard` → sign in (GitHub login is fine) → **New project**.
-2. Name: `meanwhile` · Database password: click **Generate a password** and save it in your password
-   manager (needed below) · Region: **East US** · **Create new project**. Wait ~2 minutes.
-
-**b) Collect five values**
-1. **Project URL** and **anon key**: left sidebar **Project Settings** (gear) → **API Keys** →
-   **Legacy API keys** tab → copy `anon` `public`. Then **Data API** (or **API**) → copy the **Project URL**
-   (looks like `https://abcdefgh.supabase.co`). The anon key is safe to ship in the app; row-level
-   security limits every row to your account.
-2. **Project ref**: the `abcdefgh` part of that URL.
-3. **Database password**: from step a).
-4. **Access token** (lets GitHub Actions apply the database schema for you):
-   `https://supabase.com/dashboard/account/tokens` → **Generate new token** → name `github-actions` → copy.
-
-**c) Add them as GitHub secrets** (repo → **Settings** → **Secrets and variables** → **Actions** →
-**New repository secret**, one each):
-
-| Name | Value |
-|---|---|
-| `SUPABASE_URL` | Project URL |
-| `SUPABASE_ANON_KEY` | anon public key |
-| `SUPABASE_PROJECT_REF` | project ref |
-| `SUPABASE_DB_PASSWORD` | database password |
-| `SUPABASE_ACCESS_TOKEN` | access token |
-
-**d) Apply the schema** — repo **Actions** tab → **supabase** workflow → newest run → **Re-run all jobs**.
-It should finish green; in Supabase, **Table Editor** now lists `cgm_readings`, `doses`, `meals`, …
-(If you'd rather not use the access token: Supabase **SQL Editor** → **New query** → paste the whole file
-`supabase/migrations/20261004000100_meanwhile_init.sql` → **Run**.)
-
-**e) Create your account — the rest is automatic**
-1. Re-run the **android** workflow (Actions → newest android run → **Re-run all jobs**) so the APK
-   includes your Supabase URL/key, then install that release.
-2. Open the app → enter your email + a password → **Create account**. No confirmation email — CI
-   already turned that off for you.
-3. That's it. On its next run, CI **disables new sign-ups automatically** (it checks that your
-   account exists first, so you can't be locked out). Every android/supabase run's **Summary** page
-   shows a setup checklist with what, if anything, is still missing.
-
-**Check it works:** in the app, **Settings → App note** → type something → **Save note**. With the phone in
-airplane mode it stays "1 pending"; turn data back on and within a minute it shows **Synced**, and the
-note appears in Supabase **Table Editor → feedback**. Restore test: uninstall, reinstall, sign in — your
-records come back.
-
-## 6. xDrip+ bridge (M3) — live Eversense readings
-
-Meanwhile reads your CGM from **xDrip+** running on the same phone (xDrip+ bridges the Eversense).
-
-1. In **xDrip+**: ☰ menu → **Settings** → **Inter-app settings**:
-   - **xDrip Web Service** → **On** (Meanwhile polls `http://127.0.0.1:17580/sgv.json` every 60 s).
-     Leave "Open Web Service" off — Meanwhile is on the same phone, no secret needed.
-   - **Broadcast locally** → **On** (instant readings in addition to polling). Keep the web service on
-     too: Android can't tell which app sent a broadcast, so Meanwhile treats it as "fetch now" and takes
-     the reading from xDrip+'s web service; the broadcast value is only used if that service is off.
-   - **Identify receiver** → type `app.meanwhile.v4` (lets xDrip+ wake Meanwhile even if it was killed).
-2. Install xDrip+ **before** (or reinstall Meanwhile after) so Android grants Meanwhile xDrip's
-   broadcast permission. Polling works either way.
-3. In **Meanwhile**: tap the **Finish setup** card (or Settings → Open setup checklist) and allow
-   Notifications, Unrestricted battery, Exact alarms and Microphone.
-4. Settings → **CGM (xDrip+)** → **Test connection** should show your latest reading.
-
-If you run a different bridge app, tell Claude which one — it can be added as another `CgmSource`.
-
-## 7. AI keys (M6) — you set these yourself; never paste them in chat
-
-The AI runs in a Supabase Edge Function (`ai`). Keys live only in Supabase's secret store — never in
-the repo, the APK, logs or chat.
+Once step 2 has finished:
 
 1. **Gemini key:** `https://aistudio.google.com/apikey` → **Create API key** → copy.
 2. **Anthropic key:** `https://console.anthropic.com/settings/keys` → **Create Key** → copy.
-3. Supabase dashboard → your project → **Edge Functions** (left sidebar) → **Secrets** →
-   **Add new secret**, one at a time:
+3. Supabase dashboard → project **meanwhile-v4** → **Edge Functions** → **Secrets** → **Add new secret**:
 
    | Name | Value |
    |---|---|
    | `GEMINI_API_KEY` | Gemini key |
    | `ANTHROPIC_API_KEY` | Anthropic key |
-   | `GEMINI_FAST_MODEL` | `gemini-flash-latest` (optional: faster routing/estimates) |
+   | `GEMINI_FAST_MODEL` | `gemini-flash-latest` (optional: faster routing and estimates) |
 
-   You do **not** need `ALLOWED_USER_IDS` any more: the function automatically allows only the
-   project's **first account** (yours), and CI locks sign-ups so no later account can exist. If you
-   ever want to be explicit, set `ALLOWED_USER_IDS` to your user id — it's one tap in the app:
-   **Settings → Account → Copy**.
+No re-run needed — the function reads them on its next call, and the next CI run's checklist
+confirms both are set. Only your account can use the AI: the function allows just the project's
+first account, and CI locks sign-ups after you create it.
 
-   Optional model overrides (defaults shown): `GEMINI_MODEL` = `gemini-pro-latest`,
-   `CLAUDE_MODEL` = `claude-opus-5-5`, `CLAUDE_FAST_MODEL` (unset = same as `CLAUDE_MODEL`).
-4. Deploy the function: GitHub **Actions** → **supabase** → newest run → **Re-run all jobs** (uses the
-   access token from §5). In Supabase → **Edge Functions** you should now see `ai`.
-5. In the app: **Settings → AI provider** — Gemini first (default), Claude first, Gemini only, Claude only.
-6. Check it works: **Settings → Open setup checklist → System status → Test AI**.
+## 4. Install on the Pixel
 
-**Fallback test:** temporarily delete the `GEMINI_API_KEY` secret (or change one character), send
-"pizza and a coffee" — it still works, via Claude; Settings → AI provider shows the last error, and
-the exported `ai_calls` CSV shows `fallback_used = true`. Restore the key afterwards.
+**Recommended — automatic updates with Obtainium:**
+1. On the Pixel, install Obtainium from `https://github.com/ImranR98/Obtainium/releases/latest`
+   (`app-arm64-v8a-release.apk`) or F-Droid.
+2. On the Pixel, tap:
+   `https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https%3A%2F%2Fgithub.com%2FDJRXMUSIC%2FMeanwhile_Non-prod`
+   → **Add** → **Install**. Obtainium offers every new Release as a one-tap update.
 
----
-## 8. Nothing else to set up
+**Or by hand:** Chrome → `https://github.com/DJRXMUSIC/Meanwhile_Non-prod/releases/latest` → under
+**Assets** tap `MeanwhileV4-<version>.apk` → allow installs from Chrome → **Install** (if Play
+Protect asks: **More details → Install anyway**).
 
-The nightly learn cycle (1 am), morning report, overnight-highs check (6 am) and stats need no extra
-setup beyond **Exact alarms** in the setup checklist and the AI keys above. The Supabase analysis
-views are applied by the same **supabase** workflow; how to query them is in `docs/ANALYSIS.md`.
+## 5. First open
 
-Learning runs on its own (Settings → **Learning** to see it or switch to *Ask me first*).
+1. Enter your email + a password → **Create account** (no confirmation email). The next CI run locks
+   sign-ups to you automatically.
+2. Tap the **Finish setup** card and allow Notifications, Unrestricted battery, Exact alarms and
+   Microphone.
+
+## 6. xDrip+ bridge — live Eversense readings
+
+Meanwhile reads your CGM from **xDrip+** on the same phone.
+
+1. In **xDrip+**: ☰ menu → **Settings** → **Inter-app settings**:
+   - **xDrip Web Service** → **On** (leave "Open Web Service" off — same phone, no secret needed).
+   - **Broadcast locally** → **On** (instant readings; Meanwhile confirms each one with the web service).
+   - **Identify receiver** → `app.meanwhile.v4` (lets xDrip+ wake Meanwhile if Android killed it).
+2. Install xDrip+ **before** Meanwhile (or reinstall Meanwhile after) so Android grants Meanwhile
+   xDrip's broadcast permission. Polling works either way.
+
+## 7. Check it works
+
+Settings → **Open setup checklist** → **System status**: CGM reading, cloud backup and **Test AI**
+should all be green. That's it — the learn cycle, morning report, overnight check, stats and
+continuous learning need nothing else (Settings → **Learning** shows what it has learned).
 
 **If something looks wrong:** Settings → Diagnostics → **Copy for AI**, then paste into your AI
 coding assistant (it says what the app is and where the code lives). Nothing secret is in it.
+
+---
+
+## Reference (optional)
+
+- **AI provider:** Settings → AI provider — Gemini first (default), Claude first, Gemini only, Claude
+  only. Model overrides as Supabase secrets (defaults): `GEMINI_MODEL` = `gemini-pro-latest`,
+  `CLAUDE_MODEL` = `claude-opus-5-5`, `CLAUDE_FAST_MODEL` (unset = same as `CLAUDE_MODEL`).
+  `ALLOWED_USER_IDS` (your user id — Settings → Account → Copy) makes the AI allowlist explicit.
+- **Fallback test:** temporarily change one character of `GEMINI_API_KEY` in Supabase, send "pizza and
+  a coffee" — it still works, via Claude; Settings → AI provider shows the last error. Restore the key.
+- **Database password:** CI created the project with a random password it doesn't keep (it talks to
+  the database through the Supabase API). For a direct Postgres connection (`docs/ANALYSIS.md`):
+  Supabase → Project Settings → Database → **Reset database password**.
+- **Already made a Supabase project by hand?** Add its ref as the `SUPABASE_PROJECT_REF` secret and CI
+  uses it (it must be empty or already MeanwhileV4's). The older `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+  and `SUPABASE_DB_PASSWORD` secrets are no longer needed (harmless if present). `KEY_ALIAS` /
+  `KEY_PASSWORD` default to `meanwhile` / `KEYSTORE_PASSWORD`.
+- **Public or private repo:** public is fine — no keys are in it, your data is protected by row-level
+  security and sign-ups are locked. To make it private: Settings → General → Danger Zone → Change
+  visibility. Obtainium then needs a GitHub token: GitHub → Settings → Developer settings → Personal
+  access tokens → Fine-grained → this repo, **Contents: Read-only** → paste in Obtainium → Settings →
+  Sources → GitHub.
+- **Default branch:** the repo's default branch still holds the old PWA. To land on MeanwhileV4 (and
+  get a **Run workflow** button in Actions): Settings → General → Default branch →
+  `claude/hopeful-galileo-pgut04`. Nothing is deleted.
+- **Restore test:** uninstall, reinstall, sign in — your records come back from Supabase.
+- A different CGM bridge than xDrip+? Tell Claude which one — it can be added as another `CgmSource`.
