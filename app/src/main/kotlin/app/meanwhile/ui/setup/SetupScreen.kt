@@ -38,6 +38,7 @@ import app.meanwhile.ui.common.ScreenScaffold
 import app.meanwhile.ui.common.SectionCard
 import app.meanwhile.ui.common.rememberSafeScope
 import app.meanwhile.data.remote.AuthState
+import app.meanwhile.data.cgm.EversenseSource
 import kotlinx.coroutines.launch
 import app.meanwhile.format.relativeTime
 
@@ -47,14 +48,20 @@ data class SetupState(
     val batteryExempt: Boolean,
     val exactAlarms: Boolean,
     val microphone: Boolean,
+    /** Notification access for the built-in Eversense interceptor (only needed with the Eversense app installed). */
+    val eversenseAccess: Boolean = true,
+    val eversenseInstalled: Boolean = false,
 ) {
-    val missing: Int get() = listOf(notifications, batteryExempt, exactAlarms, microphone).count { !it }
+    val missing: Int
+        get() = listOf(notifications, batteryExempt, exactAlarms, microphone, eversenseAccess || !eversenseInstalled).count { !it }
 
     companion object {
         fun read(context: Context): SetupState {
             val pm = context.getSystemService(PowerManager::class.java)
             val am = context.getSystemService(AlarmManager::class.java)
             return SetupState(
+                eversenseAccess = EversenseSource.accessGranted(context),
+                eversenseInstalled = EversenseSource.anyInstalled(context),
                 notifications = Notifications.canPost(context),
                 batteryExempt = pm.isIgnoringBatteryOptimizations(context.packageName),
                 exactAlarms = am.canScheduleExactAlarms(),
@@ -99,6 +106,14 @@ fun SetupScreen(onBack: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
         )
         SetupRow(
+            "Read Eversense readings",
+            "Meanwhile reads your glucose from the Eversense app's notification — no xDrip+ needed. Tap, switch " +
+                "Meanwhile on and confirm. Switch greyed out? Settings → Apps → Meanwhile → ⋮ → Allow restricted " +
+                "settings, then tap here again." +
+                if (!state.eversenseInstalled) " (The Eversense app isn't installed on this phone yet.)" else "",
+            state.eversenseAccess,
+        ) { EversenseSource.openAccessSettings(context) }
+        SetupRow(
             "Notifications",
             "Live BG notification, split-dose reminders, morning report, stale-CGM and sync alerts.",
             state.notifications,
@@ -127,7 +142,7 @@ fun SetupScreen(onBack: () -> Unit) {
 
         SectionCard("System status") {
             val authState = auth
-            StatusRow("CGM reading", latestBg != null, latestBg?.let { "latest ${relativeTime(it.timestamp.toEpochMilli())}" } ?: "none yet — see xDrip+ below")
+            StatusRow("CGM reading", latestBg != null, latestBg?.let { "latest ${relativeTime(it.timestamp.toEpochMilli())}" } ?: "none yet — see CGM sources below")
             StatusRow(
                 "Cloud backup",
                 c.supabase != null && authState is AuthState.SignedIn,
@@ -160,20 +175,31 @@ fun SetupScreen(onBack: () -> Unit) {
             if (!c.ai.reachable()) Text("AI test needs: build with Supabase keys, signed in, online.", style = MaterialTheme.typography.bodySmall)
         }
 
-        SectionCard("xDrip+ feed") {
+        SectionCard("CGM sources") {
+            Text("Eversense app (built in)", style = MaterialTheme.typography.titleSmall)
+            Text(
+                when {
+                    !state.eversenseAccess -> "Needs notification access — tap Allow above."
+                    feed.eversenseSavedAt != null -> "Working · last reading ${relativeTime(feed.eversenseSavedAt!!)}"
+                    feed.eversenseSeenAt != null -> "Notification seen ${relativeTime(feed.eversenseSeenAt!!)}, no reading yet"
+                    else -> "Access granted · waiting for the Eversense app's next reading (every 5 min)"
+                },
+            )
+            feed.eversenseMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Text("xDrip+ (optional: back-fills gaps)", style = MaterialTheme.typography.titleSmall)
             Text(
                 when (feed.webOk) {
                     true -> "Connected · last reply ${feed.lastWebOkAt?.let { relativeTime(it) } ?: "—"}"
-                    false -> "Can't reach xDrip+: ${feed.webMessage}"
+                    false -> "Not connected: ${feed.webMessage}"
                     null -> "Not checked yet"
                 },
             )
             feed.lastBroadcastAt?.let { Text("Last broadcast reading ${relativeTime(it)}") }
             feed.lastBackCapture?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Text(
-                "In xDrip+: Settings → Inter-app settings → turn on \"xDrip Web Service\" and " +
-                    "\"Broadcast locally\"; set \"Identify receiver\" to app.meanwhile.v4. " +
-                    "Connection details are under Settings → CGM.",
+                "If you keep xDrip+: Settings → Inter-app settings → turn on \"xDrip Web Service\" and " +
+                    "\"Broadcast locally\"; set \"Identify receiver\" to app.meanwhile.v4. Both sources can run " +
+                    "together — each reading is stored once.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

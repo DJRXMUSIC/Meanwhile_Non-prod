@@ -22,6 +22,7 @@ import kotlin.math.roundToInt
  * permission `com.eveningoutpost.dexdrip.permissions.RECEIVE_BG_ESTIMATE`; slope is mg/dL per ms.
  */
 object XdripIntents {
+    const val PACKAGE = "com.eveningoutpost.dexdrip"
     const val ACTION_BG_ESTIMATE = "com.eveningoutpost.dexdrip.BgEstimate"
     private const val EXTRA_BG = "com.eveningoutpost.dexdrip.Extras.BgEstimate"
     private const val EXTRA_SLOPE = "com.eveningoutpost.dexdrip.Extras.BgSlope"

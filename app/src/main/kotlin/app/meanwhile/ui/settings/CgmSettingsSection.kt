@@ -22,12 +22,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import app.meanwhile.data.cgm.EversenseSource
 import app.meanwhile.data.cgm.XdripWebSource
 import app.meanwhile.data.settings.AppSettings
 import app.meanwhile.service.CgmService
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.common.SectionCard
 import app.meanwhile.format.formatTime
+import app.meanwhile.format.relativeTime
+import app.meanwhile.ui.setup.rememberSetupState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 @Composable
@@ -50,7 +54,31 @@ fun CgmSettingsSection(current: AppSettings) {
         broadcast = current.xdripBroadcastEnabled
     }
 
-    SectionCard("CGM (xDrip+)") {
+    val feed by c.cgmStatus.collectAsStateWithLifecycle()
+    val setup = rememberSetupState()
+    SectionCard("CGM — Eversense app (built in)") {
+        Text(
+            when {
+                !setup.eversenseAccess -> "Meanwhile needs notification access to read the Eversense app's glucose notification."
+                feed.eversenseSavedAt != null -> "Working · last reading saved ${relativeTime(feed.eversenseSavedAt!!)}"
+                else -> "Notification access granted · waiting for the Eversense app's next reading (every 5 min)."
+            },
+        )
+        feed.eversenseMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        feed.eversenseTexts?.let {
+            Text("What Meanwhile sees: $it", style = MaterialTheme.typography.bodySmall)
+        }
+        if (!setup.eversenseAccess) {
+            Button(onClick = { EversenseSource.openAccessSettings(c.app) }) { Text("Allow notification access") }
+            Text(
+                "Switch greyed out? Settings → Apps → Meanwhile → ⋮ → Allow restricted settings, then try again. " +
+                    "The Eversense app's own notifications must stay on.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+
+    SectionCard("CGM — xDrip+ (optional: back-fills gaps)") {
         OutlinedTextField(url, { url = it }, label = { Text("Web service address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(path, { path = it }, label = { Text("Path") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(

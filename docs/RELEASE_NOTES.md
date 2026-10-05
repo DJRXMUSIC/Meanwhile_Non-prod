@@ -4,6 +4,10 @@ First complete build. Install: download the APK below → open → allow "instal
 (or point Obtainium at this repo — see `docs/INSTALL.md`).
 
 ### New in 1.3
+- **Eversense built in — no xDrip+ needed.** Meanwhile reads your glucose straight from the Eversense
+  app's notification (allow it once in the setup checklist). It stores each reading once, ignores
+  re-posts and a value that's stuck for 35 minutes, and shows exactly what it sees if the
+  notification ever changes format. xDrip+ keeps working alongside it for back-fill if you keep it.
 - **Learns from every dose, all day.** About 4 hours after each logged dose the app measures where
   you actually landed and works out what the dose *should* have been. Once three clean meals agree
   (no other food or insulin muddying the result), it nudges your ICR, ISF or caffeine units halfway

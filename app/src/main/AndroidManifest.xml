@@ -18,11 +18,16 @@
     <!-- xDrip+ sends its local BG broadcast with this receiver permission. -->
     <uses-permission android:name="com.eveningoutpost.dexdrip.permissions.RECEIVE_BG_ESTIMATE" />
 
-    <!-- On-device speech recognition service lookup (SpeechRecognizer). -->
+    <!-- On-device speech recognition service lookup (SpeechRecognizer); the CGM apps Meanwhile reads
+         from (Eversense for the built-in interceptor, xDrip+ for the optional local feed). -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <package android:name="com.senseonics.gen12androidapp" />
+        <package android:name="com.senseonics.androidapp" />
+        <package android:name="com.senseonics.eversense365.us" />
+        <package android:name="com.eveningoutpost.dexdrip" />
     </queries>
 
     <application
@@ -52,7 +57,19 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Continuous glucose monitoring: receives CGM readings from a local bridge app (xDrip+) every few minutes, keeps insulin-on-board and factor timers current, and shows the latest glucose for insulin dosing decisions." />
+                android:value="Continuous glucose monitoring: receives CGM readings from the Eversense app's notification or a local bridge app (xDrip+) every few minutes, keeps insulin-on-board and factor timers current, and shows the latest glucose for insulin dosing decisions." />
+        </service>
+
+        <!-- Built-in Eversense interceptor: reads the glucose shown in the Eversense app's notification
+             once Danny grants notification access. -->
+        <service
+            android:name=".service.EversenseListener"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
         </service>
 
         <receiver

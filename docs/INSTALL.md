@@ -73,19 +73,28 @@ Protect asks: **More details → Install anyway**).
 
 1. Enter your email + a password → **Create account** (no confirmation email). The next CI run locks
    sign-ups to you automatically.
-2. Tap the **Finish setup** card and allow Notifications, Unrestricted battery, Exact alarms and
-   Microphone.
+2. Tap the **Finish setup** card and allow each item: **Read Eversense readings**, Notifications,
+   Unrestricted battery, Exact alarms and Microphone.
 
-## 6. xDrip+ bridge — live Eversense readings
+## 6. Eversense readings — built in
 
-Meanwhile reads your CGM from **xDrip+** on the same phone.
+Meanwhile reads your glucose straight from the **Eversense app's notification** — no xDrip+ or other
+bridge app needed.
 
-1. In **xDrip+**: ☰ menu → **Settings** → **Inter-app settings**:
-   - **xDrip Web Service** → **On** (leave "Open Web Service" off — same phone, no secret needed).
-   - **Broadcast locally** → **On** (instant readings; Meanwhile confirms each one with the web service).
-   - **Identify receiver** → `app.meanwhile.v4` (lets xDrip+ wake Meanwhile if Android killed it).
-2. Install xDrip+ **before** Meanwhile (or reinstall Meanwhile after) so Android grants Meanwhile
-   xDrip's broadcast permission. Polling works either way.
+1. Setup checklist → **Read Eversense readings** → **Allow** → switch **Meanwhile** on → **Allow**.
+   **Switch greyed out?** Android blocks this for apps installed outside the Play Store until you
+   allow it once: Settings → Apps → **Meanwhile** → ⋮ (top right) → **Allow restricted settings** →
+   then tap **Allow** in the checklist again.
+2. Keep the Eversense app's notifications **on** (Settings → Apps → Eversense → Notifications), so it
+   keeps showing your glucose there.
+3. Within 5 minutes Settings → **CGM** shows **Working · last reading saved …**. If it says *Not a
+   reading*, the **What Meanwhile sees** line shows the notification's text — use **Copy for AI**
+   (Settings → Diagnostics) and an AI assistant can adapt the reader to it.
+
+**xDrip+ is now optional.** If you already run it, leave it: Meanwhile also polls it and uses it to
+back-fill gaps (e.g. after a phone restart); each reading is stored once either way. If you uninstall
+it, Meanwhile simply stops looking for it. Its settings (Inter-app settings → xDrip Web Service and
+Broadcast locally on, Identify receiver `app.meanwhile.v4`) are only needed if you keep it.
 
 ## 7. Check it works
 
@@ -122,4 +131,4 @@ coding assistant (it says what the app is and where the code lives). Nothing sec
   get a **Run workflow** button in Actions): Settings → General → Default branch →
   `claude/hopeful-galileo-pgut04`. Nothing is deleted.
 - **Restore test:** uninstall, reinstall, sign in — your records come back from Supabase.
-- A different CGM bridge than xDrip+? Tell Claude which one — it can be added as another `CgmSource`.
+- A different CGM or bridge app? Tell Claude which one — it can be added as another `CgmSource`.

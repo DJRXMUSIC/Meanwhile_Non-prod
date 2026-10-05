@@ -73,7 +73,7 @@ fun BgHeader(bg: BgSnapshot, modifier: Modifier = Modifier, onTap: (() -> Unit)?
         }
         Text(
             text = when {
-                bg.reading == null -> "No CGM readings yet — set up xDrip+ (Settings → Setup)"
+                bg.reading == null -> "No CGM readings yet — allow Eversense access (Settings → Setup)"
                 else -> buildString {
                     bg.rate?.let { append(String.format(Locale.US, "%+.1f mg/dL/min · ", it)) }
                     append(if ((bg.ageMinutes ?: 0) < 1) "just now" else "${bg.ageMinutes} min ago")
@@ -94,7 +94,7 @@ fun StaleBanner(ageMinutes: Long?) {
             .padding(bottom = 8.dp),
     ) {
         Text(
-            "CGM reading is ${ageMinutes ?: "?"} min old — check xDrip+ / the transmitter before dosing.",
+            "CGM reading is ${ageMinutes ?: "?"} min old — check the Eversense app / transmitter before dosing.",
             color = MaterialTheme.colorScheme.onErrorContainer,
             modifier = Modifier.padding(12.dp),
         )

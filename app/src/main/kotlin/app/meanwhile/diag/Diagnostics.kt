@@ -113,11 +113,13 @@ class Diagnostics(private val c: AppContainer) {
         fun ago(ms: Long?) = ms?.let { "${Duration.between(Instant.ofEpochMilli(it), now).toMinutes()} min ago" } ?: "never"
 
         appendLine("## Health")
-        appendLine("- **Permissions:** notifications ${tick(setup.notifications)}, unrestricted battery ${tick(setup.batteryExempt)}, exact alarms ${tick(setup.exactAlarms)}, microphone ${tick(setup.microphone)}")
+        appendLine("- **Permissions:** notifications ${tick(setup.notifications)}, unrestricted battery ${tick(setup.batteryExempt)}, exact alarms ${tick(setup.exactAlarms)}, microphone ${tick(setup.microphone)}, Eversense notification access ${tick(setup.eversenseAccess)} (Eversense app ${if (setup.eversenseInstalled) "installed" else "not found"})")
         appendLine("- **Network:** ${if (c.network.online.value) "online" else "offline"}")
         appendLine("- **CGM:** latest reading ${latest?.let { ago(it.timestamp.toEpochMilli()) } ?: "none"}; xDrip+ web " +
             when (feed.webOk) { true -> "ok"; false -> "failing (${feed.webMessage})"; null -> "not checked yet" } +
             "; last broadcast ${ago(feed.lastBroadcastAt)}; ${feed.lastBackCapture ?: "no back-fill yet"}")
+        appendLine("- **Eversense (built-in interceptor):** last notification ${ago(feed.eversenseSeenAt)}, last reading saved ${ago(feed.eversenseSavedAt)}; " +
+            "${feed.eversenseMessage ?: "nothing yet"}; notification texts: ${feed.eversenseTexts ?: "—"}")
         val auth = when (val a = c.auth.state.value) {
             is AuthState.SignedIn -> "signed in (user ${a.userId.take(8)}…)" + if (a.offline) ", session offline" else ""
             AuthState.NotConfigured -> "not configured in this build"

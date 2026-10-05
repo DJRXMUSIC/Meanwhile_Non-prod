@@ -38,12 +38,14 @@ class CgmService : Service() {
     )
     private var running = false
     private var staleNotified = false
+    /** Re-used when Android or a CGM source restarts the service, so the BG doesn't flash "waiting". */
+    @Volatile private var lastNotification: Notification? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         ServiceCompat.startForeground(
-            this, Notifications.ID_FOREGROUND, notification(null, null, null),
+            this, Notifications.ID_FOREGROUND, lastNotification ?: notification(null, null, null),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
         if (!running) {
@@ -75,8 +77,9 @@ class CgmService : Service() {
                     val recent = c.cgm.recent(now.minus(Duration.ofMinutes(20)))
                     val rate = Trend.rate(recent)
                     val nm = getSystemService(android.app.NotificationManager::class.java)
+                    val n = notification(latest, rate, now).also { lastNotification = it }
                     if (Notifications.canPost(this@CgmService)) {
-                        nm.notify(Notifications.ID_FOREGROUND, notification(latest, rate, now))
+                        nm.notify(Notifications.ID_FOREGROUND, n)
                     }
                     checkStale(latest, now, staleMinutes)
                 }
@@ -92,7 +95,7 @@ class CgmService : Service() {
                 Notifications.post(
                     this, Notifications.ID_CGM_STALE, Notifications.CHANNEL_ALERTS,
                     "CGM readings are stale",
-                    "Last reading was $age min ago. Check xDrip+ and the Eversense transmitter.",
+                    "Last reading was $age min ago. Check the Eversense app and transmitter.",
                 )
             }
         } else if (staleNotified) {
@@ -106,7 +109,7 @@ class CgmService : Service() {
         val text: String
         if (latest == null) {
             title = "Meanwhile"
-            text = "Waiting for CGM readings from xDrip+"
+            text = "Waiting for CGM readings"
         } else {
             val age = Duration.between(latest.timestamp, now ?: Instant.now()).toMinutes()
             title = "${latest.mgDl} mg/dL ${Trend.arrow(rate ?: latest.trendRate)}"

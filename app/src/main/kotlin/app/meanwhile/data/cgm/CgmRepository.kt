@@ -4,9 +4,11 @@ import app.meanwhile.data.RecordFactory
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.data.db.CgmReadingEntity
 import app.meanwhile.domain.cgm.CgmReading
+import app.meanwhile.domain.cgm.ReadingGate
 import app.meanwhile.domain.util.UuidV7
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.Duration
 import java.time.Instant
 
 fun CgmReadingEntity.toDomain() = CgmReading(
@@ -31,14 +33,25 @@ class CgmRepository(
 
     suspend fun latestNow(): CgmReading? = db.cgm().latest()?.toDomain()
 
+    suspend fun between(from: Instant, to: Instant): List<CgmReading> =
+        db.cgm().between(from.toEpochMilli(), to.toEpochMilli()).map { it.toDomain() }
+
     /**
      * Inserts new readings (dedupe by timestamp and deterministic id); returns how many were new.
      * Readings stamped in the future are dropped: one would otherwise stay "latest" (BG on screen and in
-     * the dose) until the clock caught up, and stop back-fill.
+     * the dose) until the clock caught up, and stop back-fill. A reading within
+     * [ReadingGate.SAME_READING] of one from another source is the same sensor reading delivered twice
+     * (the Eversense notification and xDrip+), so the first one stored wins.
      */
     suspend fun save(readings: List<CgmReading>): Int {
         val now = System.currentTimeMillis()
-        val valid = readings.filter { it.timestamp.toEpochMilli() <= now + MAX_FUTURE_MS }
+        val inTime = readings.filter { it.timestamp.toEpochMilli() <= now + MAX_FUTURE_MS }
+        if (inTime.isEmpty()) return 0
+        val window = ReadingGate.SAME_READING
+        val existing = between(inTime.minOf { it.timestamp }.minus(window), inTime.maxOf { it.timestamp }.plus(window))
+        val valid = inTime.filter { r ->
+            existing.none { it.source != r.source && Duration.between(it.timestamp, r.timestamp).abs() < window }
+        }
         if (valid.isEmpty()) return 0
         val userId = records.meta().userId
         val rows = valid.distinctBy { it.timestamp }.map { r ->

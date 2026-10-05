@@ -8,7 +8,9 @@ import app.meanwhile.data.RecordFactory
 import app.meanwhile.data.cgm.CgmFeedStatus
 import app.meanwhile.data.cgm.CgmIntake
 import app.meanwhile.data.cgm.CgmRepository
+import app.meanwhile.data.cgm.EversenseSource
 import app.meanwhile.data.cgm.XdripBroadcastSource
+import app.meanwhile.data.cgm.XdripIntents
 import app.meanwhile.data.cgm.XdripWebSource
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.alarm.Alarms
@@ -75,22 +77,32 @@ class AppContainer(val app: Application) {
     }
     val cgm: CgmRepository by lazy { CgmRepository(db, records, ::requestSync) }
     val cgmStatus = MutableStateFlow(CgmFeedStatus())
+    val eversense: EversenseSource by lazy { EversenseSource() }
     val xdripWeb: XdripWebSource by lazy {
         XdripWebSource(http, settings) { ok, message ->
             val was = cgmStatus.value.webOk
+            // xDrip+ is optional now that Eversense is read directly: without it installed, an
+            // unreachable web service is expected, not a problem.
+            val installed = EversenseSource.installed(app, XdripIntents.PACKAGE)
             // Polling runs every minute: log the transitions, and a failure at most every 30 min.
             if (ok && was == false) {
                 AppLog.i("CGM", "xDrip+ web service reachable again")
                 AppLog.clearThrottle("xdrip-web-failing")
-            } else if (!ok && AppLog.throttle("xdrip-web-failing", 30 * 60_000L)) {
+            } else if (!ok && installed && AppLog.throttle("xdrip-web-failing", 30 * 60_000L)) {
                 AppLog.w("CGM", "xDrip+ web service unreachable: $message")
             }
+            val shown = if (ok || installed) message else "xDrip+ isn't installed (optional — Meanwhile reads the Eversense app directly)"
             cgmStatus.update {
-                it.copy(webOk = ok, webMessage = message, lastWebOkAt = if (ok) System.currentTimeMillis() else it.lastWebOkAt)
+                it.copy(webOk = ok, webMessage = shown, lastWebOkAt = if (ok) System.currentTimeMillis() else it.lastWebOkAt)
             }
         }
     }
-    val cgmIntake: CgmIntake by lazy { CgmIntake(cgm, xdripWeb, XdripBroadcastSource(app), settings, cgmStatus) }
+    val cgmIntake: CgmIntake by lazy {
+        CgmIntake(
+            cgm, xdripWeb, XdripBroadcastSource(app), settings, cgmStatus, eversense,
+            xdripInstalled = { EversenseSource.installed(app, XdripIntents.PACKAGE) },
+        )
+    }
 
     val profiles: ProfileRepository by lazy { ProfileRepository(db, records, ::requestSync) }
     val doseContext: DoseContextBuilder by lazy { DoseContextBuilder(db, cgm, profiles) }

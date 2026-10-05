@@ -395,3 +395,33 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   in the dashboard if he ever wants a direct connection.
 - Tested end to end against a mock Management API whose SQL runs on real Postgres
   (`scripts/ci/test_supabase_setup.py`, in the supabase workflow's test job).
+
+## Built-in Eversense interceptor (1.3)
+- **How:** a `NotificationListenerService` reads the official Eversense app's glucose notification
+  (packages `com.senseonics.gen12androidapp`, `com.senseonics.androidapp`,
+  `com.senseonics.eversense365.us` — the ones xDrip+'s companion mode reads). No root, no patched
+  Eversense app, and calibration stays in the Eversense app where it belongs. A direct Bluetooth
+  connection to the transmitter was ruled out: undocumented protocol, and the transmitter talks to
+  one app at a time.
+- **Strict parsing** (domain `EversenseNotification`): standard notification fields plus every
+  visible TextView of a custom layout; a value counts only if a whole text element *is* the number
+  (units/arrows aside), exactly one distinct value, 40–400 mg/dL (mmol converted). LO/HI, alerts
+  ("Low glucose 65 mg/dL"), predictions and times are not readings. Trend from an arrow character or
+  a "rising/falling" content description; otherwise the slope is computed from readings as before.
+- **Timing & dedupe** (domain `ReadingGate`): a notification carries no reading time, so the post
+  time is used (capped at now). Skipped: any reading within 2 min (any source — xDrip+ may deliver
+  the same sensor reading), the same value within 4.5 min (re-post), and a value repeated 7 times in
+  a row (35 min — a notification still showing the last value after signal loss) until it changes.
+  The repository applies the 2-min cross-source rule to every save, so xDrip+ back-fill never
+  duplicates an Eversense reading either. Thresholds are constants in `ReadingGate`, not profile
+  values: they describe the sensor's 5-min cadence, not Danny's physiology.
+- **xDrip+ becomes optional:** still polled and used for back-fill when installed (a notification
+  only shows the current value); when it isn't installed its unreachability is expected, so it is no
+  longer logged as a problem and back-fill is skipped quietly.
+- **Unknown formats are visible:** a notification that isn't understood is logged (throttled) with
+  its texts, shown in Settings → CGM as "What Meanwhile sees" and included in the diagnostics
+  report, so one paste to an AI assistant is enough to adapt the parser.
+- Notification access is a checklist item (counted only when an Eversense app is installed); the
+  button opens Meanwhile's own access switch and explains Android's "Allow restricted settings" step
+  for sideloaded apps. `<queries>` lists the Eversense and xDrip+ packages (package visibility).
+- The CGM service's notification no longer flashes "waiting" when a source restarts the service.
