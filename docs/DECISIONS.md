@@ -425,3 +425,7 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   button opens Meanwhile's own access switch and explains Android's "Allow restricted settings" step
   for sideloaded apps. `<queries>` lists the Eversense and xDrip+ packages (package visibility).
 - The CGM service's notification no longer flashes "waiting" when a source restarts the service.
+- **Fast jobs default to Gemini Flash** (first real use): with `GEMINI_FAST_MODEL` unset, route and
+  update_profile ran on Gemini Pro, which took 8–15 s and hit the 15 s budget. Route, meal
+  estimates and update_profile now use `gemini-flash-latest` unless `GEMINI_FAST_MODEL` says
+  otherwise; the learn cycle keeps Pro.

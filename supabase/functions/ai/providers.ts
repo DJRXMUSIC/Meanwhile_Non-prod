@@ -23,12 +23,13 @@ export class ProviderError extends Error {
 }
 
 // Model names come from env so they can be upgraded without code changes (spec §10.1).
-// *_FAST_MODEL (optional) is used for the latency-sensitive jobs (route, estimate_meal).
-const FAST_JOBS: Job[] = ["route", "estimate_meal"];
+// *_FAST_MODEL is used for the jobs Danny waits on (route, estimate_meal, update_profile), which
+// have a 15 s budget. Gemini Pro routinely needs 8-15 s even for these, so Gemini's fast model
+// defaults to Flash; Claude's defaults to the main model unless CLAUDE_FAST_MODEL is set.
+const FAST_JOBS: Job[] = ["route", "estimate_meal", "update_profile"];
 
 function geminiModel(job: Job): string {
-  const fast = Deno.env.get("GEMINI_FAST_MODEL");
-  if (fast && FAST_JOBS.includes(job)) return fast;
+  if (FAST_JOBS.includes(job)) return Deno.env.get("GEMINI_FAST_MODEL") ?? "gemini-flash-latest";
   return Deno.env.get("GEMINI_MODEL") ?? "gemini-pro-latest";
 }
 

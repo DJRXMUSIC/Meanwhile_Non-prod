@@ -3,7 +3,7 @@ import { Ajv } from "npm:ajv@8.20.0";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { decodeJsonFields, type Job, schemas } from "./schemas.ts";
 import { buildPrompt } from "./prompts.ts";
-import { callGemini } from "./providers.ts";
+import { callGemini, modelFor } from "./providers.ts";
 import { allowedUser, oldestUser, readJsonObject } from "./guard.ts";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -137,4 +137,16 @@ Deno.test("every job has a versioned prompt, built as shared context + job", asy
     assert(system.startsWith(common.trimEnd()) && system.endsWith(text), job);
     assert(user.includes('"now": "2026-10-04T12:00:00Z"'), job);
   }
+});
+
+Deno.test("jobs Danny waits on use a fast Gemini model by default; the learn cycle keeps Pro", () => {
+  for (const k of ["GEMINI_FAST_MODEL", "GEMINI_MODEL", "CLAUDE_FAST_MODEL", "CLAUDE_MODEL"]) Deno.env.delete(k);
+  for (const job of ["route", "estimate_meal", "update_profile"] as Job[]) {
+    assertEquals(modelFor("gemini", job), "gemini-flash-latest", job);
+    assertEquals(modelFor("claude", job), "claude-opus-5-5", job);
+  }
+  assertEquals(modelFor("gemini", "learn_cycle"), "gemini-pro-latest");
+  Deno.env.set("GEMINI_FAST_MODEL", "gemini-custom");
+  assertEquals(modelFor("gemini", "update_profile"), "gemini-custom");
+  Deno.env.delete("GEMINI_FAST_MODEL");
 });
