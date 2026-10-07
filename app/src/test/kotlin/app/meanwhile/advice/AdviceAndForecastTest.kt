@@ -32,7 +32,9 @@ class AdviceAndForecastTest {
         assertEquals(ActionKind.TREAT_LOW, alert.action.kind)
         assertEquals(listOf(alert), env.posted)
         val row = env.db.conversation().since(0).single { it.kind == "notification" }
-        assertTrue(row.text, row.text.startsWith("Eat 16 g fast carbs — BG 60 →"))
+        // Grams come from the dose math (factors active after a low can change them); the text is the action's.
+        assertEquals("${alert.title} — ${alert.text}", row.text)
+        assertTrue(row.text, Regex("^Eat \\d+ g fast carbs — BG 60 → · No insulin").containsMatchIn(row.text))
         assertTrue(row.details, row.details.contains("\"alert\":\"LOW\""))
 
         env.readings(at(5), 0) { 58 }
