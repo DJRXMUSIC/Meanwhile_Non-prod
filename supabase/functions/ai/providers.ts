@@ -23,12 +23,14 @@ export class ProviderError extends Error {
 }
 
 // Model names come from env so they can be upgraded without code changes (spec §10.1).
-// *_FAST_MODEL is used for the jobs Danny waits on (route, estimate_meal, update_profile), which
-// have a 15 s budget. Gemini Pro routinely needs 8-15 s even for these, so Gemini's fast model
-// defaults to Gemini 3.8 Flash (Danny's choice); Claude's defaults to the main model unless
-// CLAUDE_FAST_MODEL is set. If Google doesn't know a configured model, the call retries once on
-// the matching "-latest" alias rather than failing.
-const FAST_JOBS: Job[] = ["route", "estimate_meal", "update_profile"];
+// *_FAST_MODEL is used for the jobs Danny waits on (route, estimate_meal, update_profile): Gemini
+// 3.8 Flash (Danny's choice for day-to-day) with Claude Haiku 4.5 as the quick fallback — both
+// answer in a few seconds. 1.4: the quick jobs kept timing out because Gemini 3.x thinks deeply by
+// default and Opus always thinks; quick jobs now ask Gemini for minimal/low thinking and fall back
+// to Haiku. If Google doesn't know a configured model, the call retries once on the matching
+// "-latest" alias rather than failing. Learning on Claude runs as a batch at max effort
+// (CLAUDE_LEARN_MODEL / CLAUDE_LEARN_EFFORT; see below).
+export const FAST_JOBS: Job[] = ["route", "estimate_meal", "update_profile"];
 
 function geminiModel(job: Job): string {
   if (FAST_JOBS.includes(job)) return Deno.env.get("GEMINI_FAST_MODEL") ?? "gemini-3.8-flash";
@@ -36,9 +38,25 @@ function geminiModel(job: Job): string {
 }
 
 function claudeModel(job: Job): string {
-  const fast = Deno.env.get("CLAUDE_FAST_MODEL");
-  if (fast && FAST_JOBS.includes(job)) return fast;
+  if (FAST_JOBS.includes(job)) return Deno.env.get("CLAUDE_FAST_MODEL") ?? "claude-haiku-4-5";
   return Deno.env.get("CLAUDE_MODEL") ?? "claude-opus-5-5";
+}
+
+/**
+ * Gemini 3.x thinking depth (`thinkingLevel`; the older `thinkingBudget` is an error on newer
+ * models). Quick jobs think as little as the job allows — Danny is waiting; null = the model's
+ * default (deep) for the learn cycle.
+ */
+export const GEMINI_THINKING: Record<Job, "MINIMAL" | "LOW" | null> = {
+  route: "MINIMAL",
+  estimate_meal: "LOW",
+  update_profile: "LOW",
+  learn_cycle: null,
+};
+
+/** Haiku takes no `effort`; the other current Claude models do. */
+function supportsEffort(model: string): boolean {
+  return !model.startsWith("claude-haiku");
 }
 
 export function available(p: Provider): boolean {
@@ -49,7 +67,7 @@ export function modelFor(p: Provider, job: Job): string {
   return p === "gemini" ? geminiModel(job) : claudeModel(job);
 }
 
-/** Effort per job: fast jobs stay inside their 15 s budget; the learn cycle thinks hardest. */
+/** Effort per job (models that take it): quick jobs stay quick; the learn cycle thinks hardest. */
 const CLAUDE_EFFORT: Record<Job, "low" | "medium" | "high"> = {
   route: "low",
   estimate_meal: "low",
@@ -66,68 +84,191 @@ const MAX_TOKENS: Record<Job, number> = {
 
 let anthropic: Anthropic | null = null;
 
-export async function callClaude(c: ProviderCall): Promise<ProviderResult> {
+function anthropicClient(): Anthropic {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new ProviderError("ANTHROPIC_API_KEY not set", false);
   anthropic ??= new Anthropic({ apiKey, maxRetries: 0 });
+  return anthropic;
+}
+
+/** Maps an Anthropic SDK error to a ProviderError (auth problems are not worth retrying). */
+function claudeError(e: unknown, timeoutMs?: number): ProviderError {
+  if (e instanceof ProviderError) return e;
+  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
+    return new ProviderError(`Claude auth failed: ${e.message}`, false);
+  }
+  if (e instanceof Anthropic.BadRequestError) return new ProviderError(`Claude rejected the request: ${e.message}`);
+  if (e instanceof Anthropic.RateLimitError) return new ProviderError("Claude rate limited");
+  if (e instanceof Anthropic.APIConnectionTimeoutError) return new ProviderError(`Claude timed out${timeoutMs ? ` after ${timeoutMs} ms` : ""}`);
+  if (e instanceof Anthropic.APIError) return new ProviderError(`Claude API error ${e.status}: ${e.message}`);
+  return new ProviderError(`Claude call failed: ${(e as Error).message}`);
+}
+
+export async function callClaude(c: ProviderCall): Promise<ProviderResult> {
+  const client = anthropicClient();
   const model = claudeModel(c.job);
-  const params = {
+  const outputConfig = {
+    ...(supportsEffort(model) ? { effort: CLAUDE_EFFORT[c.job] } : {}),
+    format: { type: "json_schema" as const, schema: c.schema },
+  };
+  const base = {
     model,
     max_tokens: MAX_TOKENS[c.job],
     // Stable instructions first and cached; the per-call payload goes in the user turn.
     system: [{ type: "text" as const, text: c.system, cache_control: { type: "ephemeral" as const } }],
     messages: [{ role: "user" as const, content: c.user }],
-    output_config: {
-      effort: CLAUDE_EFFORT[c.job],
-      format: { type: "json_schema" as const, schema: c.schema },
-    },
-    // On a safety-classifier decline, Anthropic re-runs the request on its recommended model.
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default" as const,
+    output_config: outputConfig,
   };
+  const options = { timeout: c.timeoutMs, signal: AbortSignal.timeout(c.timeoutMs) };
   try {
     // Stream so long learn-cycle outputs never hit an HTTP timeout; finalMessage() collects it.
-    const message = await anthropic.beta.messages
-      .stream(params, { timeout: c.timeoutMs, signal: AbortSignal.timeout(c.timeoutMs) })
-      .finalMessage();
+    // The learn cycle (Opus) also asks Anthropic to re-run a safety-classifier decline on its
+    // recommended model; the quick jobs' fast model doesn't need that.
+    // deno-lint-ignore no-explicit-any
+    const message: any = FAST_JOBS.includes(c.job)
+      // deno-lint-ignore no-explicit-any
+      ? await client.messages.stream(base as any, options).finalMessage()
+      // deno-lint-ignore no-explicit-any
+      : await client.beta.messages.stream({ ...base, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } as any, options).finalMessage();
     if (message.stop_reason === "refusal") {
       throw new ProviderError(`Claude declined (${message.stop_details?.category ?? "unspecified"})`);
     }
     if (message.stop_reason === "max_tokens") throw new ProviderError("Claude output hit max_tokens");
-    const text = message.content
-      .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
-      .map((b) => b.text)
+    const text = (message.content ?? [])
+      // deno-lint-ignore no-explicit-any
+      .filter((b: any) => b.type === "text")
+      // deno-lint-ignore no-explicit-any
+      .map((b: any) => b.text)
       .join("");
     if (!text) throw new ProviderError("Claude returned no text");
     return { text, model: message.model ?? model };
   } catch (e) {
-    if (e instanceof ProviderError) throw e;
-    if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
-      throw new ProviderError(`Claude auth failed: ${e.message}`, false);
-    }
-    if (e instanceof Anthropic.BadRequestError) throw new ProviderError(`Claude rejected the request: ${e.message}`);
-    if (e instanceof Anthropic.RateLimitError) throw new ProviderError("Claude rate limited");
-    if (e instanceof Anthropic.APIConnectionTimeoutError) throw new ProviderError(`Claude timed out after ${c.timeoutMs} ms`);
-    if (e instanceof Anthropic.APIError) throw new ProviderError(`Claude API error ${e.status}: ${e.message}`);
-    throw new ProviderError(`Claude call failed: ${(e as Error).message}`);
+    throw claudeError(e, c.timeoutMs);
   }
 }
 
-/** Gemini REST generateContent with JSON-schema output (generationConfig.responseJsonSchema). */
+// --- Learning on Claude at max effort, as a Message Batch (1.4) -----------------------------------
+// A max-effort review can think far longer than an Edge Function may run (~150 s), so it goes to
+// the Message Batches API: submitted in a second, collected by the phone's later polls (most batches
+// end within an hour; at most 24 h), at half the price. Batches take no `fallbacks` parameter.
+
+export const LEARN_CUSTOM_ID = "learn_cycle";
+/** Opus 5.5's output limit: room for max-effort thinking plus the answer. */
+export const LEARN_BATCH_MAX_TOKENS = 128_000;
+
+export function claudeLearnModel(): string {
+  return Deno.env.get("CLAUDE_LEARN_MODEL") ?? Deno.env.get("CLAUDE_MODEL") ?? "claude-opus-5-5";
+}
+
+export function claudeLearnEffort(): "low" | "medium" | "high" | "xhigh" | "max" {
+  const e = Deno.env.get("CLAUDE_LEARN_EFFORT");
+  return e === "low" || e === "medium" || e === "high" || e === "xhigh" || e === "max" ? e : "max";
+}
+
+/** The batch request for one learn-cycle review: stable instructions cached, the payload as the user turn. */
+export function learnBatchParams(system: string, user: string, schema: Record<string, unknown>) {
+  return {
+    model: claudeLearnModel(),
+    max_tokens: LEARN_BATCH_MAX_TOKENS,
+    system: [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }],
+    messages: [{ role: "user" as const, content: user }],
+    output_config: {
+      effort: claudeLearnEffort(),
+      format: { type: "json_schema" as const, schema },
+    },
+  };
+}
+
+export async function submitLearnBatch(system: string, user: string, schema: Record<string, unknown>): Promise<{ id: string; model: string }> {
+  const client = anthropicClient();
+  const params = learnBatchParams(system, user, schema);
+  try {
+    // deno-lint-ignore no-explicit-any
+    const batch = await client.messages.batches.create({ requests: [{ custom_id: LEARN_CUSTOM_ID, params: params as any }] }, { timeout: 30_000 });
+    return { id: batch.id, model: params.model };
+  } catch (e) {
+    throw claudeError(e, 30_000);
+  }
+}
+
+export type BatchPoll =
+  | { state: "processing"; status: string }
+  | { state: "done"; text: string; model: string }
+  | { state: "failed"; error: string };
+
+export async function pollLearnBatch(id: string): Promise<BatchPoll> {
+  const client = anthropicClient();
+  try {
+    const batch = await client.messages.batches.retrieve(id, {}, { timeout: 20_000 });
+    if (batch.processing_status !== "ended") return { state: "processing", status: batch.processing_status };
+    // deno-lint-ignore no-explicit-any
+    const results: any[] = [];
+    for await (const r of await client.messages.batches.results(id, {}, { timeout: 20_000 })) results.push(r);
+    return readBatchResults(results);
+  } catch (e) {
+    throw claudeError(e, 20_000);
+  }
+}
+
+/** The learn review's outcome among a finished batch's results (pure, so it is tested without the API). */
+// deno-lint-ignore no-explicit-any
+export function readBatchResults(results: any[]): BatchPoll {
+  const r = results.find((x) => x?.custom_id === LEARN_CUSTOM_ID) ?? results[0];
+  if (!r) return { state: "failed", error: "the batch ended with no result" };
+  switch (r.result?.type) {
+    case "succeeded": {
+      const msg = r.result.message;
+      if (msg?.stop_reason === "refusal") return { state: "failed", error: `Claude declined (${msg.stop_details?.category ?? "unspecified"})` };
+      if (msg?.stop_reason === "max_tokens") return { state: "failed", error: "Claude output hit max_tokens" };
+      // deno-lint-ignore no-explicit-any
+      const text = (msg?.content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("");
+      if (!text) return { state: "failed", error: "Claude returned no text" };
+      return { state: "done", text, model: msg.model ?? claudeLearnModel() };
+    }
+    case "errored": {
+      const err = r.result.error;
+      return { state: "failed", error: `Claude couldn't run the review: ${err?.error?.message ?? err?.message ?? err?.type ?? "unknown error"}` };
+    }
+    case "expired":
+      return { state: "failed", error: "the batch expired before Claude ran it" };
+    case "canceled":
+      return { state: "failed", error: "the batch was canceled" };
+    default:
+      return { state: "failed", error: `unexpected batch result: ${r.result?.type ?? "none"}` };
+  }
+}
+
+/**
+ * Gemini REST generateContent with JSON-schema output (generationConfig.responseJsonSchema). Every
+ * retry inside (unknown model → its -latest alias; thinking level not supported → without it)
+ * shares the one [ProviderCall.timeoutMs].
+ */
 export async function callGemini(c: ProviderCall): Promise<ProviderResult> {
+  const started = Date.now();
+  const left = () => Math.max(1_000, c.timeoutMs - (Date.now() - started));
+  const thinking = GEMINI_THINKING[c.job];
+  const attempt = async (model: string) => {
+    try {
+      return await callGeminiModel({ ...c, timeoutMs: left() }, model, thinking);
+    } catch (e) {
+      if (e instanceof ThinkingUnsupportedError && thinking !== null) return await callGeminiModel({ ...c, timeoutMs: left() }, model, null);
+      throw e;
+    }
+  };
   const model = geminiModel(c.job);
   try {
-    return await callGeminiModel(c, model);
+    return await attempt(model);
   } catch (e) {
     const alias = FAST_JOBS.includes(c.job) ? "gemini-flash-latest" : "gemini-pro-latest";
-    if (e instanceof UnknownModelError && model !== alias) return await callGeminiModel(c, alias);
+    if (e instanceof UnknownModelError && model !== alias) return await attempt(alias);
     throw e;
   }
 }
 
 class UnknownModelError extends ProviderError {}
+class ThinkingUnsupportedError extends ProviderError {}
 
-async function callGeminiModel(c: ProviderCall, model: string): Promise<ProviderResult> {
+async function callGeminiModel(c: ProviderCall, model: string, thinking: string | null): Promise<ProviderResult> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw new ProviderError("GEMINI_API_KEY not set", false);
   let res: Response;
@@ -142,6 +283,7 @@ async function callGeminiModel(c: ProviderCall, model: string): Promise<Provider
           responseMimeType: "application/json",
           responseJsonSchema: c.schema,
           maxOutputTokens: MAX_TOKENS[c.job],
+          ...(thinking ? { thinkingConfig: { thinkingLevel: thinking } } : {}),
         },
       }),
       signal: AbortSignal.timeout(c.timeoutMs),
@@ -153,9 +295,11 @@ async function callGeminiModel(c: ProviderCall, model: string): Promise<Provider
   const body = await res.text();
   if (!res.ok) {
     if (res.status === 404) throw new UnknownModelError(`Gemini doesn't know model ${model}: ${body.slice(0, 200)}`);
+    if (res.status === 400 && thinking && /thinking/i.test(body)) throw new ThinkingUnsupportedError(`Gemini ${model} rejected thinkingLevel: ${body.slice(0, 200)}`);
     const fatal = res.status === 401 || res.status === 403;
     throw new ProviderError(`Gemini HTTP ${res.status}: ${body.slice(0, 300)}`, !fatal);
   }
+  // deno-lint-ignore no-explicit-any
   let data: any;
   try {
     data = JSON.parse(body);
@@ -169,7 +313,9 @@ async function callGeminiModel(c: ProviderCall, model: string): Promise<Provider
     throw new ProviderError(`Gemini finished with ${cand.finishReason}`);
   }
   const text = (cand.content?.parts ?? [])
+    // deno-lint-ignore no-explicit-any
     .filter((p: any) => typeof p.text === "string" && !p.thought)
+    // deno-lint-ignore no-explicit-any
     .map((p: any) => p.text)
     .join("");
   if (!text) throw new ProviderError("Gemini returned no text");

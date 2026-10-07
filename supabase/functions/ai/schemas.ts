@@ -50,7 +50,8 @@ export const factorDefinition = obj({
 export const schemas: Record<Job, Record<string, unknown>> = {
   route: obj({
     intents: arr(obj({
-      type: { type: "string", enum: ["meal", "factor_update", "dose_given", "feedback"] },
+      // 1.4: dose_correction ("never mind, only 5"), followed ("took it"), bg_reading ("BG 140").
+      type: { type: "string", enum: ["meal", "factor_update", "dose_given", "dose_correction", "followed", "bg_reading", "feedback"] },
       text_span: str,
       confidence: num,
     })),

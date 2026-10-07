@@ -3,7 +3,8 @@ import { Ajv } from "npm:ajv@8.20.0";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { decodeJsonFields, type Job, schemas } from "./schemas.ts";
 import { buildPrompt } from "./prompts.ts";
-import { callGemini, modelFor } from "./providers.ts";
+import { callGemini, GEMINI_THINKING, learnBatchParams, LEARN_BATCH_MAX_TOKENS, modelFor, readBatchResults } from "./providers.ts";
+import { BUDGET_MS, TIMEOUT_MS } from "./budgets.ts";
 import { allowedUser, oldestUser, readJsonObject } from "./guard.ts";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -139,13 +140,14 @@ Deno.test("every job has a versioned prompt, built as shared context + job", asy
   }
 });
 
-Deno.test("jobs Danny waits on use a fast Gemini model by default; the learn cycle keeps Pro", () => {
+Deno.test("jobs Danny waits on use fast models by default; the learn cycle keeps the deep ones", () => {
   for (const k of ["GEMINI_FAST_MODEL", "GEMINI_MODEL", "CLAUDE_FAST_MODEL", "CLAUDE_MODEL"]) Deno.env.delete(k);
   for (const job of ["route", "estimate_meal", "update_profile"] as Job[]) {
     assertEquals(modelFor("gemini", job), "gemini-3.8-flash", job);
-    assertEquals(modelFor("claude", job), "claude-opus-5-5", job);
+    assertEquals(modelFor("claude", job), "claude-haiku-4-5", job);
   }
   assertEquals(modelFor("gemini", "learn_cycle"), "gemini-pro-latest");
+  assertEquals(modelFor("claude", "learn_cycle"), "claude-opus-5-5");
   Deno.env.set("GEMINI_FAST_MODEL", "gemini-custom");
   assertEquals(modelFor("gemini", "update_profile"), "gemini-custom");
   Deno.env.delete("GEMINI_FAST_MODEL");
@@ -170,3 +172,102 @@ Deno.test("gemini: an unknown model name falls back to the -latest alias once", 
     globalThis.fetch = realFetch;
   }
 });
+
+Deno.test("gemini: quick jobs ask for minimal/low thinking, the learn cycle for the default", async () => {
+  Deno.env.set("GEMINI_API_KEY", "test-key");
+  Deno.env.delete("GEMINI_FAST_MODEL");
+  const realFetch = globalThis.fetch;
+  // deno-lint-ignore no-explicit-any
+  const sent: any[] = [];
+  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+    sent.push(JSON.parse(String(init.body)));
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "{}" }] }, finishReason: "STOP" }] }));
+  }) as typeof fetch;
+  try {
+    for (const job of ["route", "estimate_meal", "update_profile", "learn_cycle"] as Job[]) {
+      await callGemini({ job, system: "s", user: "u", schema: {}, timeoutMs: 1000 });
+    }
+    assertEquals(sent.map((b) => b.generationConfig.thinkingConfig?.thinkingLevel ?? null), ["MINIMAL", "LOW", "LOW", null]);
+    assertEquals(GEMINI_THINKING.learn_cycle, null);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+Deno.test("gemini: a model that rejects the thinking level is asked again without it", async () => {
+  Deno.env.set("GEMINI_API_KEY", "test-key");
+  const realFetch = globalThis.fetch;
+  // deno-lint-ignore no-explicit-any
+  const sent: any[] = [];
+  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    sent.push(body);
+    if (body.generationConfig.thinkingConfig) {
+      return new Response('{"error":{"code":400,"message":"Thinking level is not supported for this model."}}', { status: 400 });
+    }
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "{\"ok\":1}" }] }, finishReason: "STOP" }] }));
+  }) as typeof fetch;
+  try {
+    const r = await callGemini({ job: "route", system: "s", user: "u", schema: {}, timeoutMs: 1000 });
+    assertEquals(r.text, "{\"ok\":1}");
+    assertEquals(sent.length, 2);
+    assertEquals(sent[1].generationConfig.thinkingConfig, undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+Deno.test("quick jobs get 20 s per provider and 45 s in all; the learn cycle answered directly 120 s", () => {
+  for (const job of ["route", "estimate_meal", "update_profile"] as Job[]) {
+    assertEquals(TIMEOUT_MS[job], 20_000, job);
+    assertEquals(BUDGET_MS[job], 45_000, job);
+  }
+  assertEquals(TIMEOUT_MS.learn_cycle, 120_000);
+  assert(BUDGET_MS.learn_cycle < 150_000, "inside the Edge Function wall clock");
+});
+
+Deno.test("learning on Claude: Opus 5.5 at max effort as a batch, structured output, no fallbacks param", () => {
+  for (const k of ["CLAUDE_LEARN_MODEL", "CLAUDE_MODEL", "CLAUDE_LEARN_EFFORT"]) Deno.env.delete(k);
+  const p = learnBatchParams("SYSTEM", "USER", schemas.learn_cycle);
+  assertEquals(p.model, "claude-opus-5-5");
+  assertEquals(p.max_tokens, LEARN_BATCH_MAX_TOKENS);
+  assertEquals(p.max_tokens, 128_000);
+  assertEquals(p.output_config.effort, "max");
+  assertEquals(p.output_config.format.type, "json_schema");
+  assertEquals(p.output_config.format.schema, schemas.learn_cycle);
+  assertEquals(p.system[0].text, "SYSTEM");
+  assertEquals(p.messages[0].content, "USER");
+  assert(!("fallbacks" in p) && !("betas" in p) && !("thinking" in p), "batches take no fallbacks; Opus 5.5 thinks by itself");
+  Deno.env.set("CLAUDE_LEARN_EFFORT", "xhigh");
+  assertEquals(learnBatchParams("s", "u", {}).output_config.effort, "xhigh");
+  Deno.env.set("CLAUDE_LEARN_EFFORT", "nonsense");
+  assertEquals(learnBatchParams("s", "u", {}).output_config.effort, "max");
+  Deno.env.delete("CLAUDE_LEARN_EFFORT");
+});
+
+Deno.test("batch results: the answer, a refusal, an error, an expiry", () => {
+  const ok = readBatchResults([{
+    custom_id: "learn_cycle",
+    result: { type: "succeeded", message: { model: "claude-opus-5-5", stop_reason: "end_turn", content: [{ type: "thinking", thinking: "" }, { type: "text", text: "{\"summary\":\"x\"}" }] } },
+  }]);
+  assertEquals(ok, { state: "done", text: "{\"summary\":\"x\"}", model: "claude-opus-5-5" });
+  const refused = readBatchResults([{ custom_id: "learn_cycle", result: { type: "succeeded", message: { stop_reason: "refusal", stop_details: { category: "bio" }, content: [] } } }]);
+  assert(refused.state === "failed" && refused.error.includes("declined (bio)"));
+  const errored = readBatchResults([{ custom_id: "learn_cycle", result: { type: "errored", error: { type: "error", error: { type: "invalid_request_error", message: "bad schema" } } } }]);
+  assert(errored.state === "failed" && errored.error.includes("bad schema"));
+  assertEquals(readBatchResults([{ custom_id: "learn_cycle", result: { type: "expired" } }]).state, "failed");
+  assertEquals(readBatchResults([]).state, "failed");
+});
+
+Deno.test("route understands corrections, done, a spoken BG", () => {
+  const validate = ajv.compile(schemas.route);
+  const sample = {
+    intents: [
+      { type: "dose_correction", text_span: "never mind I only took 5", confidence: 0.97 },
+      { type: "followed", text_span: "took it", confidence: 0.9 },
+      { type: "bg_reading", text_span: "BG 140", confidence: 0.99 },
+    ],
+  };
+  assert(validate(sample), ajv.errorsText(validate.errors));
+});
+
