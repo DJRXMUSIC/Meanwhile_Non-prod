@@ -46,6 +46,15 @@ data class ProposalSnapshot(
     val bgOverride: Double? = null,
 )
 
+/** The live state and the action the dose math names for it (no food), as of one instant. */
+data class NowState(
+    val context: app.meanwhile.data.dose.DoseContext,
+    val input: DoseInput,
+    val result: DoseResult,
+    val action: NextBestAction,
+    val bgStale: Boolean,
+)
+
 /** A dose row just written (logged, or a correction superseding an earlier one) and its message. */
 data class LoggedDose(val dose: DoseEntity, val message: String, val previous: DoseEntity? = null)
 
@@ -106,6 +115,15 @@ class NbaService(
             bgAgeMinutes = ctx.bgAgeMinutes, bgStale = stale, computedAt = now.toEpochMilli(), computeMs = ms,
             action = action, bgOverride = bgOverride,
         )
+    }
+
+    /** What the dose math says to do right now with no food — computed, not stored (AI context, alerts). */
+    suspend fun preview(now: Instant = Instant.now()): NowState {
+        val ctx = contexts.build(now)
+        val input = ctx.input()
+        val result = DoseEngine.compute(input, ctx.profile.profile)
+        val stale = ctx.bgAgeMinutes == null || ctx.bgAgeMinutes > staleMinutes()
+        return NowState(ctx, input, result, NextBestActions.decide(input, result, ctx.profile.profile, ctx.bgAgeMinutes, stale), stale)
     }
 
     /**

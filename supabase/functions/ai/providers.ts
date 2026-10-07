@@ -30,7 +30,7 @@ export class ProviderError extends Error {
 // If Google doesn't know a configured model, the call retries once on the matching
 // "-latest" alias rather than failing. Learning on Claude runs as a batch at max effort
 // (CLAUDE_LEARN_MODEL / CLAUDE_LEARN_EFFORT; see below).
-export const FAST_JOBS: Job[] = ["route", "estimate_meal", "update_profile"];
+export const FAST_JOBS: Job[] = ["route", "converse", "estimate_meal", "update_profile"];
 
 function geminiModel(job: Job): string {
   if (FAST_JOBS.includes(job)) return Deno.env.get("GEMINI_FAST_MODEL") ?? "gemini-3.8-flash";
@@ -49,6 +49,7 @@ function claudeModel(job: Job): string {
  */
 export const GEMINI_THINKING: Record<Job, "MINIMAL" | "LOW" | null> = {
   route: "MINIMAL",
+  converse: "LOW",
   estimate_meal: "LOW",
   update_profile: "LOW",
   learn_cycle: null,
@@ -70,6 +71,7 @@ export function modelFor(p: Provider, job: Job): string {
 /** Effort per job (models that take it): quick jobs stay quick; the learn cycle thinks hardest. */
 const CLAUDE_EFFORT: Record<Job, "low" | "medium" | "high"> = {
   route: "low",
+  converse: "low",
   estimate_meal: "low",
   update_profile: "medium",
   learn_cycle: "high",
@@ -77,6 +79,7 @@ const CLAUDE_EFFORT: Record<Job, "low" | "medium" | "high"> = {
 
 const MAX_TOKENS: Record<Job, number> = {
   route: 2_000,
+  converse: 4_000,
   estimate_meal: 2_000,
   update_profile: 8_000,
   learn_cycle: 32_000,

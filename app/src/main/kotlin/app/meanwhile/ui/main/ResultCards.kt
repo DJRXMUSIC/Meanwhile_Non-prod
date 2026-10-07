@@ -37,6 +37,7 @@ import app.meanwhile.data.input.AiProposalCard
 import app.meanwhile.data.input.DoseConfirmCard
 import app.meanwhile.data.input.DoseLoggedCard
 import app.meanwhile.data.input.MealLoggedCard
+import app.meanwhile.data.input.ReplyCard
 import app.meanwhile.data.input.FactorPickerCard
 import app.meanwhile.data.input.FactorUpdateCard
 import app.meanwhile.data.input.FeedbackSavedCard
@@ -95,6 +96,7 @@ fun ResultCardView(card: ResultCard, profile: Profile, vm: MainViewModel) {
         is FactorUpdateCard -> FactorUpdateCardView(card, onUndo = { vm.undoFactors(card) })
         is MealMacrosCard -> MealMacrosCardView(card, onConfirm = { vm.confirmMeal(card, it) })
         is DoseConfirmCard -> DoseConfirmCardView(card, vm)
+        is ReplyCard -> AppBubble(card.text)
         is FeedbackSavedCard -> AppBubble("Saved to feedback: ${card.text}")
         is FactorPickerCard -> FactorPickerCardView(card, profile) { id, preset -> vm.pickFactor(card, id, preset) }
         is InfoCard -> AppBubble(card.message, isError = card.isError)

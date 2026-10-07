@@ -3,7 +3,7 @@
 // "optional" values are nullable. Values whose type varies (old/new in learn-cycle changes) travel
 // as JSON-encoded strings and are decoded back to JSON before returning to the app.
 
-export type Job = "route" | "estimate_meal" | "update_profile" | "learn_cycle";
+export type Job = "route" | "converse" | "estimate_meal" | "update_profile" | "learn_cycle";
 
 const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
 const obj = (properties: Record<string, unknown>) => ({
@@ -51,6 +51,16 @@ export const schemas: Record<Job, Record<string, unknown>> = {
   route: obj({
     intents: arr(obj({
       // 1.4: dose_correction ("never mind, only 5"), followed ("took it"), bg_reading ("BG 140").
+      type: { type: "string", enum: ["meal", "factor_update", "dose_given", "dose_correction", "followed", "bg_reading", "feedback"] },
+      text_span: str,
+      confidence: num,
+    })),
+  }),
+
+  // 1.4: one call that both answers Danny in words and says what (if anything) to act on.
+  converse: obj({
+    reply: str,
+    intents: arr(obj({
       type: { type: "string", enum: ["meal", "factor_update", "dose_given", "dose_correction", "followed", "bg_reading", "feedback"] },
       text_span: str,
       confidence: num,

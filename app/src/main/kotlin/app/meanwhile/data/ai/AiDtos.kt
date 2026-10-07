@@ -51,6 +51,10 @@ data class RouteDto(val intents: List<RouteIntentDto>)
 @Serializable
 data class RouteIntentDto(val type: String, @SerialName("text_span") val textSpan: String, val confidence: Double = 1.0)
 
+// --- converse (1.4) ---
+@Serializable
+data class ConverseDto(val reply: String = "", val intents: List<RouteIntentDto> = emptyList())
+
 // --- estimate_meal ---
 @Serializable
 data class MealEstimateDto(

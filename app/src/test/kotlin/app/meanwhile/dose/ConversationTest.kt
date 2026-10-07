@@ -1,18 +1,26 @@
 package app.meanwhile.dose
 
+import app.meanwhile.data.db.ConversationLogEntity
 import app.meanwhile.data.input.AiHooks
+import app.meanwhile.data.input.ConverseResult
 import app.meanwhile.data.input.DoseLoggedCard
 import app.meanwhile.data.input.InfoCard
 import app.meanwhile.data.input.InputSession
 import app.meanwhile.data.input.MealLoggedCard
+import app.meanwhile.data.input.MealMacrosCard
 import app.meanwhile.data.input.NbaCard
+import app.meanwhile.data.input.ReplyCard
 import app.meanwhile.data.input.Step
 import app.meanwhile.data.input.StepState
 import app.meanwhile.domain.nba.ActionKind
 import app.meanwhile.domain.profile.Profile
+import app.meanwhile.domain.router.DoseIntent
 import app.meanwhile.domain.router.RouteResult
 import app.meanwhile.testing.TestEnv
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -161,22 +169,89 @@ class ConversationTest {
         assertNull(env.nba.openProposal(at(120)))
     }
 
-    @Test
-    fun `certain messages skip the AI router, food in words still goes to it`() = runBlocking {
+    /** A stand-in AI that answers in words and records what it was asked. */
+    private class TalkingAi(private val words: String, private val route: RouteResult? = RouteResult(emptyList(), "ai")) : AiHooks {
         val asked = mutableListOf<String>()
-        env.aiHooks = object : AiHooks {
-            override val online: Boolean = true
-            override suspend fun route(text: String, profile: Profile, inputId: String): RouteResult? {
-                asked += text
-                return null
-            }
+        val done = mutableListOf<List<String>>()
+        var state: JsonObject? = null
+        override val online: Boolean = true
+        override suspend fun converse(
+            text: String, profile: Profile, inputId: String, state: JsonObject, done: List<String>, history: List<ConversationLogEntity>,
+        ): ConverseResult {
+            asked += text
+            this.done += done
+            this.state = state
+            return ConverseResult(words, if (done.isEmpty()) route else null, "test-model")
         }
+    }
+
+    @Test
+    fun `certain messages skip the AI, food in words goes to it as conversation`() = runBlocking {
+        val ai = TalkingAi("Sounds good.", route = null)
+        env.aiHooks = ai
         say("took 6 units", 0)
         say("BG 140 and 60 carbs", 1)
         say("what should I do", 2)
-        assertTrue("no AI round trip for $asked", asked.isEmpty())
+        assertTrue("no AI round trip before acting: ${ai.asked}", ai.asked.isEmpty())
         say("ate a turkey sandwich", 3)
-        assertEquals(listOf("ate a turkey sandwich"), asked)
+        assertEquals(listOf("ate a turkey sandwich"), ai.asked)
+    }
+
+    @Test
+    fun `chat gets words back, not a carbs form`() = runBlocking {
+        env.aiHooks = TalkingAi("All working — BG is steady, nothing to do.")
+        val session = say("just testing out the new features", 0)
+        val reply = session.cards.single() as ReplyCard
+        assertEquals("All working — BG is steady, nothing to do.", reply.text)
+        assertEquals("test-model", reply.model)
+        assertTrue(session.cards.none { it is MealMacrosCard || it is NbaCard })
+        assertTrue("already answered", !session.needsReply)
+        val rows = env.db.conversation().forInput(session.inputId)
+        assertEquals("All working — BG is steady, nothing to do.", rows.last().text)
+    }
+
+    @Test
+    fun `offline, words the phone can't read are not treated as a meal`() = runBlocking {
+        val card = say("just testing out the new features", 0).cards.single() as InfoCard
+        assertTrue(card.message, card.message.startsWith("I didn't catch"))
+        // A meal cue still asks for the macros.
+        assertTrue(say("ate a turkey sandwich", 1).cards.single() is MealMacrosCard)
+    }
+
+    @Test
+    fun `the AI can say what to act on, and code reads the numbers`() = runBlocking {
+        env.aiHooks = TalkingAi(
+            "Logged — that'll keep working for a few hours.",
+            RouteResult(listOf(DoseIntent("took 4 units", 4.0)), "ai"),
+        )
+        val session = say("did my usual for the pizza earlier", 0)
+        assertTrue(session.cards.first() is ReplyCard)
+        val logged = session.cards.filterIsInstance<DoseLoggedCard>().single()
+        assertEquals(4.0, logged.dose.units, 0.0)
+    }
+
+    @Test
+    fun `a message logged instantly gets the AI's words after, with the live state`() = runBlocking {
+        val ai = TalkingAi("Got it — 6 u logged.")
+        env.aiHooks = ai
+        val session = say("took 6 units", 0)
+        assertTrue(session.needsReply)
+        assertTrue(session.cards.single() is DoseLoggedCard)
+        assertTrue("nothing asked before logging", ai.asked.isEmpty())
+
+        val reply = env.inputs.reply(session, now = at(0))!!
+        assertEquals("Got it — 6 u logged.", reply.text)
+        assertTrue(ai.done.single().toString(), ai.done.single().single().startsWith("Logged 6 u rapid"))
+        val state = ai.state!!
+        assertTrue(state.toString(), state["iob_u"]!!.jsonPrimitive.double > 5.0)
+        assertTrue(state.toString(), state.containsKey("current_action"))
+        assertEquals("Got it — 6 u logged.", env.db.conversation().forInput(session.inputId).last().text)
+    }
+
+    @Test
+    fun `no reply is asked for when the AI is off`() = runBlocking {
+        val session = say("took 6 units", 0)
+        assertNull(env.inputs.reply(session, now = at(0)))
     }
 
     @Test

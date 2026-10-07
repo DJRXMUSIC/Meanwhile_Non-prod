@@ -44,7 +44,6 @@ data class AiCallInfo(val provider: String?, val model: String?, val latencyMs: 
  * back to the offline path (spec §10.6: AI is never required for a dose).
  */
 interface AiHooks {
-    suspend fun route(text: String, profile: Profile, inputId: String): RouteResult? = null
     suspend fun estimateMeal(description: String, profile: Profile, inputId: String): MealDraft? = null
     /** Returns a card proposing AI factor changes for Danny to accept, or null to use the offline fallback. */
     suspend fun updateProfile(text: String, intents: List<FactorIntent>, profile: Profile, inputId: String): ResultCard? = null
@@ -53,6 +52,19 @@ interface AiHooks {
     fun lastCall(): AiCallInfo? = null
     /** What the AI is doing right now ("Asking Gemini…"), for the running step's line. */
     fun activity(): kotlinx.coroutines.flow.StateFlow<String?>? = null
+    /**
+     * 1.4: answer Danny in words, given the live [state] and the recent conversation. With [done]
+     * empty it also reads the message (what to act on); otherwise the app already acted and only a
+     * reply is wanted.
+     */
+    suspend fun converse(
+        text: String,
+        profile: Profile,
+        inputId: String,
+        state: kotlinx.serialization.json.JsonObject,
+        done: List<String>,
+        history: List<app.meanwhile.data.db.ConversationLogEntity>,
+    ): ConverseResult? = null
 }
 
 /** The latest undoable things in this conversation that only the screen knows about (1.4 "cancel that"). */
@@ -87,6 +99,7 @@ class InputProcessor(
         onStep: (Step) -> Unit = {},
     ): InputSession {
         val started = System.currentTimeMillis()
+        var reply: String? = null
         val text = raw.trim()
         val profile = profiles.current().profile
         val inputId = UuidV7.string(now.toEpochMilli())
@@ -115,10 +128,17 @@ class InputProcessor(
                 steps.done("understand", "Understood", describe(offlineRoute) + " · instantly, no AI needed")
                 offlineRoute
             }
+            // 1.4: anything else goes to the AI as conversation — it answers in words and says what (if
+            // anything) to act on, so "just testing" gets a reply instead of a carbs form.
             else -> steps.run("understand", if (ai().online) "Understanding (AI)" else "Understanding") {
-                val viaAi = if (ai().online) skippable(skipAi) { ai().route(text, profile, inputId) } else null
-                val r = viaAi ?: offlineRoute
-                r to describe(r) + " · " + (if (viaAi != null) aiLine() else offlineReason(skipAi))
+                val conv = if (ai().online) {
+                    skippable(skipAi) { ai().converse(text, profile, inputId, stateJson(now), emptyList(), recentHistory(now)) }
+                } else {
+                    null
+                }
+                reply = conv?.reply?.takeIf { it.isNotBlank() }
+                val r = conv?.route ?: offlineRoute
+                r to describe(r) + " · " + (if (conv?.route != null) aiLine() else offlineReason(skipAi))
             }
         }
         val m = records.meta(now = now.toEpochMilli())
@@ -141,10 +161,47 @@ class InputProcessor(
             AppLog.w("Input", e.message.orEmpty())
             cards += InfoCard("err-$inputId", e.message.orEmpty(), isError = true)
         }
-        val session = InputSession(inputId, text, via, route, cards, switched = forcedPath != null)
+        reply?.let { cards.add(0, ReplyCard("reply-$inputId", it, ai().lastCall()?.model)) }
+        // Read by code and acted on without the AI: its words follow separately (see [reply]).
+        val needsReply = reply == null && forcedPath == null && route.router != "ai"
+        val session = InputSession(inputId, text, via, route, cards, switched = forcedPath != null, needsReply = needsReply)
         conversation.reply(session, System.currentTimeMillis() - started)
         return session
     }
+
+    /**
+     * The AI's words for a message the app already acted on ("took 6 units" → logged at once, then
+     * "Got it — 6 u logged; you'll have 6.8 u on board for the next hour"). Null when the AI is
+     * unavailable — the cards already said what happened.
+     */
+    suspend fun reply(session: InputSession, now: Instant = Instant.now(), skipAi: Deferred<Unit>? = null, onStep: (Step) -> Unit = {}): ReplyCard? {
+        if (!ai().online) return null
+        val steps = Steps(session.inputId, onStep)
+        val profile = profiles.current().profile
+        val done = session.cards.map { CardText.text(it) }
+        val text = steps.run("reply", "Replying (AI)") {
+            val conv = skippable(skipAi) { ai().converse(session.raw, profile, session.inputId, stateJson(now), done, recentHistory(now)) }
+            val words = conv?.reply?.takeIf { it.isNotBlank() }
+            words to (if (words != null) aiLine() else "no reply")
+        } ?: return null
+        val card = ReplyCard("reply-${session.inputId}", text, ai().lastCall()?.model)
+        conversation.write(ConversationLog.ROLE_APP, ConversationLog.KIND_REPLY, text, kotlinx.serialization.json.buildJsonObject { put("source", "ai_reply") }, session.inputId)
+        return card
+    }
+
+    /** The live state for the AI; a failure to build it never stops the message. */
+    private suspend fun stateJson(now: Instant): kotlinx.serialization.json.JsonObject =
+        try {
+            nba.preview(now).toJson()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.w("Input", "state for the AI: ${e.message}")
+            buildJsonObject { put("unavailable", e.message.orEmpty().take(120)) }
+        }
+
+    private suspend fun recentHistory(now: Instant) =
+        runCatching { conversation.transcriptSince(now.minus(Duration.ofHours(12)).toEpochMilli()) }.getOrDefault(emptyList())
 
     private suspend fun act(
         text: String,
@@ -194,6 +251,11 @@ class InputProcessor(
                 steps, MealDraft(meal.description, meal.carbsG ?: 0.0, meal.fatG ?: 0.0, meal.proteinG ?: 0.0, meal.liquidOrSugary), inputId, now, bg,
             )
             meal != null && CORRECTION.containsMatchIn(meal.description.lowercase()) -> cards += nbaStep(steps, MealDraft(OfflineRouter.CHECK_DESCRIPTION), inputId, now, bg)
+            // The phone's reader files anything it doesn't understand as food; without the AI saying
+            // so, words with no meal cue are not treated as a meal.
+            meal != null && route.router != "ai" && meal.confidence <= UNSURE -> cards += InfoCard(
+                "info-$inputId", "I didn't catch a meal, a dose or anything to log in that. For food, say what you ate (“ate a sandwich”) or the carbs.",
+            )
             meal != null -> cards += steps.run("estimate", if (ai().online) "Estimating the meal (AI)" else "Reading the meal") {
                 mealNeedsMacros(meal, profile, inputId, bg, skipAi).let { it to CardText.text(it) }
             }
@@ -425,6 +487,8 @@ class InputProcessor(
     private companion object {
         /** Offline intents at or above this are certain (food described in words is 0.8 or less). */
         const val CONFIDENT = 0.9
+        /** The offline reader's guess that leftover words are food (no meal cue) — too unsure to ask for macros. */
+        const val UNSURE = 0.5
         val CORRECTION = Regex("^(correction|correct|check|nba|what should i (take|do)|dose check)\\b")
         val DOSE_WORDS = Regex("\\b(took|take|taken|insulin|units?|dose|shot|bolus|inject|humalog|lantus|long[- ]?acting)\\b")
     }

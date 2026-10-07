@@ -19,6 +19,7 @@ const dawn = {
 Deno.test("spec-shaped outputs validate", () => {
   const samples: Record<string, unknown> = {
     route: { intents: [{ type: "factor_update", text_span: "a coffee", confidence: 0.95 }, { type: "meal", text_span: "pizza", confidence: 0.9 }] },
+    converse: { reply: "All good — BG 112 and steady, nothing needed.", intents: [] },
     estimate_meal: { carbs_g: 70, fat_g: 24, protein_g: 22, liquid_or_sugary: false, is_estimate: true, notes: "2 slices, NY style" },
     update_profile: {
       changes: [{
@@ -188,6 +189,7 @@ Deno.test("gemini: quick jobs ask for minimal/low thinking, the learn cycle for 
       await callGemini({ job, system: "s", user: "u", schema: {}, timeoutMs: 1000 });
     }
     assertEquals(sent.map((b) => b.generationConfig.thinkingConfig?.thinkingLevel ?? null), ["MINIMAL", "LOW", "LOW", null]);
+    assertEquals(GEMINI_THINKING.converse, "LOW");
     assertEquals(GEMINI_THINKING.learn_cycle, null);
   } finally {
     globalThis.fetch = realFetch;
@@ -218,7 +220,7 @@ Deno.test("gemini: a model that rejects the thinking level is asked again withou
 });
 
 Deno.test("quick jobs get 60 s per provider; the learn cycle answered directly 120 s", () => {
-  for (const job of ["route", "estimate_meal", "update_profile"] as Job[]) {
+  for (const job of ["route", "converse", "estimate_meal", "update_profile"] as Job[]) {
     assertEquals(TIMEOUT_MS[job], 60_000, job);
     assert(BUDGET_MS[job] >= 2 * TIMEOUT_MS[job] && BUDGET_MS[job] < 150_000, job);
   }

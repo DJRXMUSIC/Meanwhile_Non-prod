@@ -507,3 +507,15 @@ he says logged (and corrected), learn on Claude Opus at max effort, log everythi
   → PROCESSING, haptic ticks on start/stop/error, up to 3 alternatives kept, every recognizer error
   named in plain words.
 
+- **Conversation, not just NBA (1.4, Danny: "can't it just kind of converse as well as give NBA?").**
+  A message the phone can't read with certainty goes to the `converse` job instead of `route`: the AI
+  answers in words (`reply`, shown as a chat bubble) and lists what, if anything, to act on (same
+  intent types; numbers still read by code from each `text_span`). It gets the live state
+  (`NbaService.preview`: BG, trend, age, IOB, factors, pending units and the no-food action the dose
+  math gives right now), the last 12 h of the conversation and 48 h of doses/meals/factors, so
+  "how am I doing?", "going for a run later" or "why 6 units?" get real answers. It may only quote
+  insulin/carb numbers taken from that state or from what the app did. Messages code reads with
+  certainty are still acted on at once; the AI's words follow as a second bubble (`InputProcessor.reply`,
+  quiet on failure). Offline, words with no meal cue (offline confidence ≤ 0.5) get "I didn't catch…"
+  instead of the macros form. The `route` job stays in the function for older APKs. No spoken replies
+  (Danny: "Dont have it reply out loud").

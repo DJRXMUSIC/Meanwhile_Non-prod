@@ -17,11 +17,16 @@ data class InputSession(
     val cards: List<ResultCard>,
     /** True when this input replaced an earlier routing via the path switch. */
     val switched: Boolean = false,
+    /** Acted on by code alone; the AI's words come after ([InputProcessor.reply]). */
+    val needsReply: Boolean = false,
 )
 
 sealed interface ResultCard {
     val key: String
 }
+
+/** What the app says back in words (1.4 conversation). */
+data class ReplyCard(override val key: String, val text: String, val model: String? = null) : ResultCard
 
 data class FeedbackSavedCard(override val key: String, val text: String) : ResultCard
 

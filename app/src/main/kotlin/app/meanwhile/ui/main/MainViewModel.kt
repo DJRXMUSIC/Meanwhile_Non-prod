@@ -105,6 +105,15 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
                     )
                     update(turn.id) { it.copy(session = session, finishedAt = System.currentTimeMillis()) }
                     linkAcrossTurns(session)
+                    // Logged instantly by code; the AI's words follow (failures are quiet — the cards said it).
+                    if (session.needsReply) {
+                        val words = runCatching {
+                            c.inputs.reply(session, skipAi = signal, onStep = { step -> update(turn.id) { it.copy(steps = merge(it.steps, step)) } })
+                        }.getOrNull()
+                        if (words != null) {
+                            update(turn.id) { t -> t.copy(session = t.session?.let { s -> s.copy(cards = listOf(words) + s.cards) }, finishedAt = System.currentTimeMillis()) }
+                        }
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

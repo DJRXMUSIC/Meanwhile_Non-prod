@@ -25,7 +25,7 @@ import { buildPrompt } from "./prompts.ts";
 import { allowedUser, oldestUser, readJsonObject } from "./guard.ts";
 import { BUDGET_MS, TIMEOUT_MS } from "./budgets.ts";
 
-const JOBS: Job[] = ["route", "estimate_meal", "update_profile", "learn_cycle"];
+const JOBS: Job[] = ["route", "converse", "estimate_meal", "update_profile", "learn_cycle"];
 const MIN_FALLBACK_MS = 8_000;
 const BATCH_ID = /^msgbatch_[A-Za-z0-9_-]{8,}$/;
 

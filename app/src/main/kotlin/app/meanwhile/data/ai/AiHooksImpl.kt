@@ -44,30 +44,52 @@ class AiHooksImpl(
 
     override fun activity() = ai.activity
 
+    override suspend fun converse(
+        text: String,
+        profile: Profile,
+        inputId: String,
+        state: JsonObject,
+        done: List<String>,
+        history: List<app.meanwhile.data.db.ConversationLogEntity>,
+    ): app.meanwhile.data.input.ConverseResult? {
+        if (!ai.reachable()) return null
+        val offline = OfflineRouter(profile.factors)
+        val since = Instant.now().minus(Duration.ofHours(48)).toEpochMilli()
+        val recent = recentContext(since)
+        val meals = db.meals().between(since, Long.MAX_VALUE)
+        val payload = buildJsonObject {
+            base(profile).forEach { (k, v) -> put(k, v) }
+            put("text", text)
+            put("state", state)
+            putJsonArray("done") { done.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
+            putJsonArray("recent_conversation") {
+                history.takeLast(30).forEach { e ->
+                    addJsonObject { put("at", isoOf(e.recordedAt)); put("who", if (e.role == "user") "danny" else "app"); put("kind", e.kind); put("text", e.text) }
+                }
+            }
+            put("recent", JsonObject(recent + ("meals" to kotlinx.serialization.json.buildJsonArray {
+                meals.forEach { m ->
+                    addJsonObject {
+                        put("at", isoOf(m.recordedAt)); put("description", m.description)
+                        put("carbs_g", m.carbsG); put("fat_g", m.fatG); put("protein_g", m.proteinG)
+                    }
+                }
+            })))
+            put("profile", profileJson(profile))
+            if (done.isEmpty()) put("offline_guess", AppJson.encodeToJsonElement(ListSerializer(RoutedIntent.serializer()), offline.route(text).intents))
+        }
+        val out = ai.call("converse", payload, inputId, "converse: $text", AiClient.FAST_TIMEOUT_MS) as? AiOutcome.Ok ?: return null
+        val dto = runCatching { AppJson.decodeFromJsonElement(ConverseDto.serializer(), out.result) }.getOrNull() ?: return null
+        val route = if (done.isEmpty()) RouteResult(dto.intents.flatMap { i -> toIntents(i, text, offline) }, "ai") else null
+        return app.meanwhile.data.input.ConverseResult(dto.reply.trim(), route, out.model)
+    }
+
     private fun base(profile: Profile, now: Instant = Instant.now()) = mapOf(
         "now" to isoOf(now.toEpochMilli()),
         "timezone" to zone().id,
     )
 
     private fun profileJson(profile: Profile) = ProfileJson.tree(profile)
-
-    override suspend fun route(text: String, profile: Profile, inputId: String): RouteResult? {
-        if (!ai.reachable()) return null
-        val offline = OfflineRouter(profile.factors)
-        val guess = offline.route(text)
-        val payload = buildJsonObject {
-            base(profile).forEach { (k, v) -> put(k, v) }
-            put("text", text)
-            put("profile", profileJson(profile))
-            put("offline_guess", AppJson.encodeToJsonElement(ListSerializer(RoutedIntent.serializer()), guess.intents))
-        }
-        val out = ai.call("route", payload, inputId, "route: $text", AiClient.FAST_TIMEOUT_MS) as? AiOutcome.Ok ?: return null
-        val dto = runCatching { AppJson.decodeFromJsonElement(RouteDto.serializer(), out.result) }.getOrNull() ?: return null
-        if (dto.intents.isEmpty()) return null
-        // The AI decides *what* each part is; numbers inside each span are parsed deterministically.
-        val intents = dto.intents.flatMap { i -> toIntents(i, text, offline) }
-        return RouteResult(intents, "ai")
-    }
 
     private fun toIntents(i: RouteIntentDto, full: String, offline: OfflineRouter): List<RoutedIntent> {
         val span = i.textSpan.ifBlank { full }

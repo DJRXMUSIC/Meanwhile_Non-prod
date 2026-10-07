@@ -138,6 +138,7 @@ object CardText {
         is DoseLoggedCard -> card.message
         is MealLoggedCard -> card.message
         is DoseConfirmCard -> card.loggedMessage ?: "How many units did you take?"
+        is ReplyCard -> card.text
         is FeedbackSavedCard -> "Saved to feedback: ${card.text}"
         is FactorUpdateCard -> "Profile updated: " + card.changes.joinToString("; ") { change(it) } +
             if (card.aiQueued) " (AI refinement queued)" else ""

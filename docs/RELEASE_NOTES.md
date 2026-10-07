@@ -7,6 +7,11 @@ Obtainium at this repo — see `docs/INSTALL.md`). Updating keeps all your data.
 - **A conversation, not a dashboard.** The main screen is now a chat: you say (or type) what you're
   doing, the app answers. Glucose, trend, age and insulin on board sit in one line at the top; tap
   "active factors" to unfold the rest. Earlier messages from today stay visible.
+- **It talks back.** Anything that isn't a plain dose, number or meal gets an answer in words, based on
+  your live BG, insulin on board and the last two days — "just testing", "how am I doing?", "going
+  for a run in an hour, anything I should do?", "why did it say 6 units?". It only acts when there's
+  something to act on, and any insulin or carb number it mentions comes from the dose math, never the
+  AI. After an instant log ("took 6 units") a short reply follows. Replies are on screen only.
 - **One clear next step.** Every answer is one action in big type — **Take 6 u, then eat in 12 min**,
   **Eat 16 g fast carbs** (a low, never insulin), **Eat ~12 g carbs** (insulin on board will
   overshoot), **Eat — no insulin needed**, **Nothing to do now** or **Check your BG** — with the button
