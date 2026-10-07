@@ -21,6 +21,7 @@ import app.meanwhile.data.ai.ProposalReview
 import app.meanwhile.data.net.NetworkMonitor
 import app.meanwhile.data.dose.DoseContextBuilder
 import app.meanwhile.domain.dose.DoseEngine
+import app.meanwhile.data.importer.HistoryImporter
 import app.meanwhile.data.input.AdviceService
 import app.meanwhile.data.input.AiHooks
 import app.meanwhile.data.input.ConversationLog
@@ -139,6 +140,7 @@ class AppContainer(val app: Application) {
             )
         }
     }
+    val importer: HistoryImporter by lazy { HistoryImporter(db, records, cgm, conversation, ::requestSync) }
     val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync, conversation) { aiHooks } }
 
     val learning: LearningEngine by lazy { LearningEngine(app, db, records, profiles, ai, settings, ::requestSync) }

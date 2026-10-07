@@ -54,11 +54,28 @@ class AiHooksImpl(
     ): app.meanwhile.data.input.ConverseResult? {
         if (!ai.reachable()) return null
         val offline = OfflineRouter(profile.factors)
-        val since = Instant.now().minus(Duration.ofHours(48)).toEpochMilli()
+        val payload = conversePayload(text, profile, state, done, history)
+        val out = ai.call("converse", payload, inputId, "converse: $text", AiClient.FAST_TIMEOUT_MS) as? AiOutcome.Ok ?: return null
+        val dto = runCatching { AppJson.decodeFromJsonElement(ConverseDto.serializer(), out.result) }.getOrNull() ?: return null
+        val route = if (done.isEmpty()) RouteResult(dto.intents.flatMap { i -> toIntents(i, text, offline) }, "ai") else null
+        return app.meanwhile.data.input.ConverseResult(dto.reply.trim(), route, out.model)
+    }
+
+    /** What the converse job is sent (kept separate so it is tested without a network). */
+    internal suspend fun conversePayload(
+        text: String,
+        profile: Profile,
+        state: JsonObject,
+        done: List<String>,
+        history: List<app.meanwhile.data.db.ConversationLogEntity>,
+        now: Instant = Instant.now(),
+    ): JsonObject {
+        val offline = OfflineRouter(profile.factors)
+        val since = now.minus(Duration.ofHours(48)).toEpochMilli()
         val recent = recentContext(since)
         val meals = db.meals().between(since, Long.MAX_VALUE)
-        val payload = buildJsonObject {
-            base(profile).forEach { (k, v) -> put(k, v) }
+        return buildJsonObject {
+            base(profile, now).forEach { (k, v) -> put(k, v) }
             put("text", text)
             put("state", state)
             putJsonArray("done") { done.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
@@ -78,10 +95,6 @@ class AiHooksImpl(
             put("profile", profileJson(profile))
             if (done.isEmpty()) put("offline_guess", AppJson.encodeToJsonElement(ListSerializer(RoutedIntent.serializer()), offline.route(text).intents))
         }
-        val out = ai.call("converse", payload, inputId, "converse: $text", AiClient.FAST_TIMEOUT_MS) as? AiOutcome.Ok ?: return null
-        val dto = runCatching { AppJson.decodeFromJsonElement(ConverseDto.serializer(), out.result) }.getOrNull() ?: return null
-        val route = if (done.isEmpty()) RouteResult(dto.intents.flatMap { i -> toIntents(i, text, offline) }, "ai") else null
-        return app.meanwhile.data.input.ConverseResult(dto.reply.trim(), route, out.model)
     }
 
     private fun base(profile: Profile, now: Instant = Instant.now()) = mapOf(

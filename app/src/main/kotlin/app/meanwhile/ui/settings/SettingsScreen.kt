@@ -281,6 +281,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             Text("Export any date range as CSV (one file per table, plus a zip of all).")
             Button(onClick = { onOpen(Routes.EXPORT) }) { Text("Export…") }
         }
+        ImportSection()
 
         SectionCard("Dose calculator (debug)") {
             Text("Try any inputs against the live profile and see the full breakdown. Nothing is logged.")
@@ -355,6 +356,88 @@ private fun AdviceSection() {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Switch(checked = on, enabled = i == 0 || p.alerts.enabled, onCheckedChange = { set(path, it) })
                 Text(label)
+            }
+        }
+    }
+}
+
+/**
+ * 2.0: bring in the old Meanwhile app's export (CGM + doses) so stats, the AI and learning start from
+ * Danny's real history; its settings are offered, never applied without his tap.
+ */
+@Composable
+private fun ImportSection() {
+    val c = LocalAppContainer.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberSafeScope()
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<app.meanwhile.data.importer.ImportResult?>(null) }
+    var applied by remember { mutableStateOf<String?>(null) }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        busy = true
+        status = "Reading the file…"
+        scope.launch {
+            try {
+                val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)!!.use { input ->
+                        c.importer.import(input) { p -> status = p }
+                    }
+                }
+                result = r
+                status = r.summary
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                app.meanwhile.log.AppLog.e("Import", "import failed: ${e.message}", e)
+                status = "Couldn't import that file: ${e.message ?: e::class.java.simpleName}"
+            } finally {
+                busy = false
+            }
+        }
+    }
+    SectionCard("Import history") {
+        Text(
+            "Bring in the old Meanwhile app's export (.json): CGM readings and doses, so stats, the AI and learning start " +
+                "from your real history. Importing twice adds nothing; doses from after you started logging here are skipped.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(enabled = !busy, onClick = { pick.launch(arrayOf("application/json", "text/plain", "*/*")) }) {
+            Text(if (busy) "Importing…" else "Import from file…")
+        }
+        status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        val r = result
+        val state by c.profiles.current.collectAsStateWithLifecycle(initialValue = null)
+        val current = state?.profile
+        if (r != null && current != null && !r.settings.isEmpty) {
+            val changes = r.settings.changes(current)
+            if (changes.isEmpty()) {
+                Text("Your profile already has the old app's settings.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text("The old app's settings:", style = MaterialTheme.typography.titleSmall)
+                changes.forEach { ch -> Text("${ch.path}: ${ch.old} → ${ch.new}", style = MaterialTheme.typography.bodySmall) }
+                Button(enabled = applied == null, onClick = {
+                    scope.launch {
+                        val now = c.profiles.current().profile
+                        val fresh = r.settings.changes(now)
+                        app.meanwhile.domain.profile.ProfilePatch.apply(now, fresh).onSuccess { updated ->
+                            val problems = app.meanwhile.domain.profile.ProfileValidation.problems(updated)
+                            if (problems.isNotEmpty()) {
+                                applied = "Not applied: " + problems.joinToString("; ")
+                                return@onSuccess
+                            }
+                            val v = c.profiles.saveVersion(
+                                updated, app.meanwhile.data.profile.ProfileSource.MANUAL, app.meanwhile.data.profile.ProfileStatus.ACCEPTED,
+                                "Manual: settings from the old app", changes = fresh,
+                            )
+                            c.conversation.action(null, "Applied the old app's settings → " + fresh.joinToString { "${it.path} ${it.new}" })
+                            applied = "Applied as profile v${v.version}"
+                        }.onFailure { applied = "Not applied: ${it.message}" }
+                    }
+                }) { Text("Use these settings") }
+                applied?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
     }

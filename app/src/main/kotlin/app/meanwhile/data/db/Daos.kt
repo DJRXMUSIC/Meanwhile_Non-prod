@@ -86,6 +86,10 @@ interface FactorEventDao : RecordDao<FactorEventEntity> {
 
 @Dao
 interface DoseDao : RecordDao<DoseEntity> {
+    /** When this app's own dose log starts (imported history excluded) — the import's cutoff (2.0). */
+    @Query("SELECT MIN(givenAt) FROM doses WHERE details NOT LIKE '%\"source\":\"import\"%'")
+    suspend fun earliestGivenAt(): Long?
+
     @Query("SELECT * FROM doses WHERE syncState = 0 ORDER BY createdAt LIMIT :limit")
     suspend fun pending(limit: Int): List<DoseEntity>
 

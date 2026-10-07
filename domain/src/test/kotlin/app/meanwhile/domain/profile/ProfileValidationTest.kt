@@ -73,5 +73,22 @@ class ProfileValidationTest {
         assertEquals(LearningSettings(), old.learning)
         assertEquals(emptyList(), ProfileValidation.problems(old))
     }
-}
 
+    @Test
+    fun `profiles saved before 1_4 and 2_0 settings existed load with the new defaults`() {
+        val tree = ProfileJson.tree(Profile()).toMutableMap()
+        listOf("nba", "forecast", "alerts").forEach { tree.remove(it) }
+        val old = ProfileJson.fromTree(kotlinx.serialization.json.JsonObject(tree))
+        assertEquals(NbaSettings(), old.nba)
+        assertEquals(ForecastSettings(), old.forecast)
+        assertEquals(AlertSettings(), old.alerts)
+        assertEquals(emptyList(), ProfileValidation.problems(old))
+    }
+
+    @Test
+    fun `alert settings are validated`() {
+        val bad = Profile(alerts = AlertSettings(correctionAboveMgDl = Double.NaN, correctionMinUnits = -1, repeatMin = -5, correctionMinMinutesSinceDose = -1))
+        val problems = ProfileValidation.problems(bad).filter { it.startsWith("alerts.") }
+        assertEquals(4, problems.size, problems.toString())
+    }
+}

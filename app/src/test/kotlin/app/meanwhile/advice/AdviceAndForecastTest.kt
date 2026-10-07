@@ -33,7 +33,7 @@ class AdviceAndForecastTest {
         assertEquals(listOf(alert), env.posted)
         val row = env.db.conversation().since(0).single { it.kind == "notification" }
         assertTrue(row.text, row.text.startsWith("Eat 16 g fast carbs — BG 60 →"))
-        assertTrue(row.details, row.details.contains("\\"alert\\":\\"LOW\\""))
+        assertTrue(row.details, row.details.contains("\"alert\":\"LOW\""))
 
         env.readings(at(5), 0) { 58 }
         assertNull("repeat within 30 min", env.advice.check(at(5)))
