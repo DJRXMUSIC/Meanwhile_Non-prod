@@ -98,17 +98,29 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            # Pasted secrets often pick up spaces or line breaks; base64 has neither.
-            if ! printf '%s' "$KEYSTORE_BASE64" | tr -d ' \t\r\n' | base64 -d > "$RUNNER_TEMP/release.jks" 2>/dev/null; then
-              echo "::error::KEYSTORE_BASE64 isn't the signing key — paste the whole VALUE line from the paste sheet again (docs/INSTALL.md §2)"
-              echo "- :x: **Signing:** \`KEYSTORE_BASE64\` couldn't be read — paste it again from the sheet" >> "$GITHUB_STEP_SUMMARY"
+            # Pasted secrets can pick up line breaks, spaces or the surrounding labels from the paste
+            # sheet: take the longest run of base64 characters as the key, and the first word of the
+            # password secret that actually unlocks it.
+            printf '%s' "$KEYSTORE_BASE64" | tr -d ' \t\r\n' | grep -oE '[A-Za-z0-9+/]{1000,}={0,2}' \
+              | awk '{ print length, $0 }' | sort -rn | head -1 | cut -d' ' -f2- > "$RUNNER_TEMP/ks.b64"
+            if ! base64 -d "$RUNNER_TEMP/ks.b64" > "$RUNNER_TEMP/release.jks" 2>/dev/null || [ ! -s "$RUNNER_TEMP/release.jks" ]; then
+              echo "::error::KEYSTORE_BASE64 doesn't contain the whole signing key — paste the long VALUE line from the paste sheet again (docs/INSTALL.md §2)"
+              echo "- :x: **Signing:** \`KEYSTORE_BASE64\` doesn't contain the whole key — paste the long line from the sheet again" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
-            if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storetype PKCS12 -storepass "$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d ' \t\r\n')" > /dev/null 2>&1; then
+            found=""
+            for word in $(printf '%s' "$KEYSTORE_PASSWORD" | tr '\r\t' '  '); do
+              if keytool -list -keystore "$RUNNER_TEMP/release.jks" -storetype PKCS12 -storepass "$word" > /dev/null 2>&1; then
+                found="$word"; break
+              fi
+            done
+            if [ -z "$found" ]; then
               echo "::error::KEYSTORE_PASSWORD doesn't unlock the signing key — paste it again from the sheet (docs/INSTALL.md §2)"
               echo "- :x: **Signing:** \`KEYSTORE_PASSWORD\` doesn't match the key — paste it again from the sheet" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
+            echo "::add-mask::$found"
+            printf '%s' "$found" > "$RUNNER_TEMP/release.pass"
             echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "- :white_check_mark: **Signing:** Releases publish automatically" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -124,13 +136,14 @@ jobs:
           KEY_PASSWORD_SECRET: ${{ secrets.KEY_PASSWORD }}
         run: |
           export SUPABASE_URL="${SUPABASE_URL:-$URL_SECRET}" SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-$ANON_KEY_SECRET}"
-          export KEYSTORE_PASSWORD="$(printf '%s' "$KEYSTORE_PASSWORD_RAW" | tr -d ' \t\r\n')"
+          if [ -f "$RUNNER_TEMP/release.pass" ]; then KEYSTORE_PASSWORD="$(cat "$RUNNER_TEMP/release.pass")"; else KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD_RAW"; fi
+          export KEYSTORE_PASSWORD
           export KEY_ALIAS="${KEY_ALIAS_SECRET:-meanwhile}" KEY_PASSWORD="${KEY_PASSWORD_SECRET:-$KEYSTORE_PASSWORD}"
           ./gradlew :app:assembleRelease --console=plain
 
       - name: Remove keystore
         if: always()
-        run: rm -f "$RUNNER_TEMP/release.jks"
+        run: rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/release.pass" "$RUNNER_TEMP/ks.b64"
 
       - name: Collect APK
         id: apk
