@@ -128,7 +128,8 @@ jobs:
       - name: Release APK
         env:
           # The Supabase step exported SUPABASE_URL / SUPABASE_ANON_KEY; these older per-value
-          # secrets are only a fallback. Alias and key password default to the generated keystore's.
+          # secrets are only a fallback. The password is the one the signing step verified; alias and
+          # key password default to the keystore's (alias "meanwhile", key password = store password).
           URL_SECRET: ${{ secrets.SUPABASE_URL }}
           ANON_KEY_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
           KEYSTORE_PASSWORD_RAW: ${{ secrets.KEYSTORE_PASSWORD }}
