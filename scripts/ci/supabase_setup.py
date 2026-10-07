@@ -180,11 +180,14 @@ def create_project(api):
         p = api.call("POST", "/v1/projects", body, retries=0)
     except ApiError as e:
         # A dropped response may still have created it: look before giving up.
-        found = [x for x in api.call("GET", "/v1/projects") or [] if x.get("name") == PROJECT_NAME]
+        visible = api.call("GET", "/v1/projects") or []
+        found = [x for x in visible if x.get("name") == PROJECT_NAME]
         if not found:
-            raise ApiError(e.status, f"Supabase refused to create the project: {e}. Free plans allow two "
-                                     "active projects — pause or delete one, or create a project named "
-                                     f"'{PROJECT_NAME}' yourself and re-run.") from None
+            seen = ", ".join(f"'{x.get('name')}' ({x.get('status')})" for x in visible) or "none"
+            raise ApiError(e.status, f"Supabase refused to create the project: {e}. Projects this token can see: "
+                                     f"{seen}. Free plans allow two active projects — pause or delete one, or "
+                                     f"create an empty project named '{PROJECT_NAME}' in the same account as the "
+                                     "token and re-run.") from None
         p = found[0]
     return p["ref"]
 
@@ -214,7 +217,8 @@ def resolve_project(api, create):
         if kind != "foreign":
             log(f"Using project '{p['name']}' ({p['ref']}, {kind})")
             return p["ref"], False
-        log(f"Skipping project '{p['name']}' ({p['ref']}): it holds other tables")
+        log(f"Skipping project '{p['name']}' ({p['ref']}): it holds other tables, so it isn't MeanwhileV4's")
+        summary(f"- :warning: **Supabase:** skipped project '{p['name']}' — it already holds other tables (an old app's?)")
     if not create:
         return None, False
     ref = create_project(api)
