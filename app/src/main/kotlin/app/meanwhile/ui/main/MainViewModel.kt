@@ -335,11 +335,15 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
             replace(card.key, card.copy(decision = if (edited) ProfileStatus.EDITED else ProfileStatus.ACCEPTED, decidedMessage = message))
             // Update Profile first, then Next Best Action with the updated profile (spec §9.2).
             val turn = turns.firstOrNull { t -> t.session?.cards?.any { it.key == card.key } == true }
-            turn?.session?.cards?.filterIsInstance<NbaCard>()?.filter { it.loggedMessage == null && !it.dismissed }?.forEach { old ->
-                replace(old.key, c.nba.propose(old.meal, old.inputId, bgOverride = old.bgOverride))
+            val open = turn?.session?.cards?.filterIsInstance<NbaCard>()?.filter { it.loggedMessage == null && !it.dismissed }.orEmpty()
+            open.forEach { old -> replace(old.key, c.nba.propose(old.meal, old.inputId, bgOverride = old.bgOverride)) }
+            // Units for caffeine & co. are in the next best action shown with them (the coffee's milk
+            // too), or ride on the next dose when there is none.
+            when {
+                accepted.none { it.unitsAdd != null } -> message
+                open.isNotEmpty() -> "$message · included in the next best action"
+                else -> "$message · added to your next dose"
             }
-            // Units added for caffeine & co. ride on the next meal's dose — nothing to inject now.
-            if (accepted.any { it.unitsAdd != null }) "$message · added to your next meal's dose" else message
         }
 
     fun logSecond(proposalId: String, units: Int, skipped: Boolean = false) = act(null, if (skipped) "Skipped the second injection" else "Logged the second injection: $units u") {

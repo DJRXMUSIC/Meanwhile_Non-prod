@@ -75,6 +75,11 @@ object ProfileValidation {
         if (!f.carryMin.isFinite() || f.carryMin < 0) add("forecast.carryMin can't be negative (is ${show(f.carryMin)})")
         if (f.minReadings < 2) add("forecast.minReadings must be at least 2 (is ${f.minReadings})")
         if (!f.maxReadingAgeMin.isFinite() || f.maxReadingAgeMin <= 0) add("forecast.maxReadingAgeMin must be above 0 (is ${show(f.maxReadingAgeMin)})")
+        val cf = p.coffee
+        listOf(
+            "coffee.milkCupsPerCoffee" to cf.milkCupsPerCoffee, "coffee.milkCarbsPerCup" to cf.milkCarbsPerCup,
+            "coffee.milkFatPerCup" to cf.milkFatPerCup, "coffee.milkProteinPerCup" to cf.milkProteinPerCup,
+        ).forEach { (path, v) -> if (!v.isFinite() || v < 0) add("$path can't be negative (is ${show(v)})") }
         val a = p.alerts
         finite("alerts.correctionAboveMgDl", a.correctionAboveMgDl)
         finite("alerts.carbsProjectedBelowMgDl", a.carbsProjectedBelowMgDl)

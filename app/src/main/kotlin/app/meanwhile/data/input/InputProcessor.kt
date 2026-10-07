@@ -11,6 +11,7 @@ import app.meanwhile.data.profile.ProfileSource
 import app.meanwhile.domain.nba.ActionKind
 import app.meanwhile.domain.profile.Profile
 import app.meanwhile.domain.router.BgIntent
+import app.meanwhile.domain.router.CoffeeMilk
 import app.meanwhile.domain.router.DoseCorrectionIntent
 import app.meanwhile.domain.router.DoseIntent
 import app.meanwhile.domain.router.FactorIntent
@@ -247,12 +248,33 @@ class InputProcessor(
         }
         if (forcedPath == "factor_update" && factorIntents.isEmpty()) cards += FactorPickerCard("pick-$inputId", text)
 
+        // 2.0: a coffee is caffeine (the profile update above) plus its milk, dosed like food — so the
+        // answer is the usual next best action (insulin, eat, or nothing), not just a profile change.
+        val coffee = factorIntents.firstOrNull { it.factorId == COFFEE_FACTOR && it.action != "deactivate" }
+            ?.takeIf { cards.none { c -> c is DoseLoggedCard } }
+        val milk = coffee?.let { CoffeeMilk.food(text, it.amount, profile.coffee) }
+        // Words that only describe the cup ("with milk", "black") are the coffee, not a separate meal.
         val meal = route.intents.filterIsInstance<MealIntent>().firstOrNull()
+            ?.takeUnless { coffee != null && !it.hasMacros && CoffeeMilk.aboutTheCup(it.description) }
+            ?.let { m -> if (milk != null && !m.hasMacros) m.copy(description = "${m.description} and ${milk.description}") else m }
         val bgOnly = meal == null && bg != null && cards.none { it is AiProposalCard || it is DoseLoggedCard }
         when {
             meal != null && meal.hasMacros -> cards += nbaStep(
-                steps, MealDraft(meal.description, meal.carbsG ?: 0.0, meal.fatG ?: 0.0, meal.proteinG ?: 0.0, meal.liquidOrSugary), inputId, now, bg,
+                steps,
+                MealDraft(
+                    listOfNotNull(meal.description, milk?.description).joinToString(" + "),
+                    (meal.carbsG ?: 0.0) + (milk?.carbsG ?: 0.0), (meal.fatG ?: 0.0) + (milk?.fatG ?: 0.0),
+                    (meal.proteinG ?: 0.0) + (milk?.proteinG ?: 0.0), meal.liquidOrSugary,
+                ),
+                inputId, now, bg,
             )
+            meal == null && milk != null -> cards += nbaStep(
+                steps, MealDraft(milk.description, milk.carbsG, milk.fatG, milk.proteinG, liquidOrSugary = milk.carbsG > 0), inputId, now, bg,
+            )
+            // Oat milk, cream, sugar, a latte …: what's in the cup is estimated like any food.
+            meal == null && coffee != null -> cards += steps.run("estimate", if (ai().online) "Estimating the coffee (AI)" else "Reading the coffee") {
+                mealNeedsMacros(MealIntent(text, liquidOrSugary = true, description = text), profile, inputId, bg, skipAi).let { it to CardText.text(it) }
+            }
             meal != null && CORRECTION.containsMatchIn(meal.description.lowercase()) -> cards += nbaStep(steps, MealDraft(OfflineRouter.CHECK_DESCRIPTION), inputId, now, bg)
             // The phone's reader files anything it doesn't understand as food; without the AI saying
             // so, words with no meal cue are not treated as a meal.
@@ -492,6 +514,8 @@ class InputProcessor(
         const val CONFIDENT = 0.9
         /** The offline reader's guess that leftover words are food (no meal cue) — too unsure to ask for macros. */
         const val UNSURE = 0.5
+        /** Caffeine (DefaultFactors.caffeine). */
+        const val COFFEE_FACTOR = "F4"
         val CORRECTION = Regex("^(correction|correct|check|nba|what should i (take|do)|dose check)\\b")
         val DOSE_WORDS = Regex("\\b(took|take|taken|insulin|units?|dose|shot|bolus|inject|humalog|lantus|long[- ]?acting)\\b")
     }

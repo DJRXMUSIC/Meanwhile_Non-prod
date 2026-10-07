@@ -26,6 +26,8 @@ data class Profile(
     val forecast: ForecastSettings = ForecastSettings(),
     /** When the app speaks up on its own with a notification (2.0). */
     val alerts: AlertSettings = AlertSettings(),
+    /** What a coffee brings besides caffeine (2.0: Danny takes his with whole milk). */
+    val coffee: CoffeeSettings = CoffeeSettings(),
 ) {
     fun factor(id: String): FactorDefinition? = factors.firstOrNull { it.id == id }
 }
@@ -132,6 +134,19 @@ data class AlertSettings(
     val carbsProjectedBelowMgDl: Double = 70.0,
     /** Minutes before the same kind of alert repeats while it still applies. */
     val repeatMin: Int = 30,
+)
+
+/**
+ * A coffee is assumed to come with [milkCupsPerCoffee] cups of milk (Danny: 1/8 cup whole milk per cup
+ * unless he says otherwise), at these macros per cup of milk (whole milk: 12 g carbs, 8 g fat, 8 g
+ * protein). The milk is dosed like any food, together with the caffeine units.
+ */
+@Serializable
+data class CoffeeSettings(
+    val milkCupsPerCoffee: Double = 0.125,
+    val milkCarbsPerCup: Double = 12.0,
+    val milkFatPerCup: Double = 8.0,
+    val milkProteinPerCup: Double = 8.0,
 )
 
 /** Exponential insulin activity model (spec §6). */

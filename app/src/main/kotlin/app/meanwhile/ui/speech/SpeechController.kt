@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -60,6 +62,16 @@ class SpeechController(private val context: Context) {
     private var recognizer: SpeechRecognizer? = null
     private var startedAt = 0L
 
+    /** False once the on-device recognizer failed for lack of a model: the standard one is used instead. */
+    private var preferOnDevice = true
+
+    /** The words heard so far this session — never thrown away by a late error or an empty result. */
+    private var heardSoFar = ""
+    private var delivered = true
+    private var finish: ((String, List<String>, List<Float>, String) -> Unit)? = null
+    private val main = Handler(Looper.getMainLooper())
+    private val deliverHeard = Runnable { finish?.invoke(heardSoFar, emptyList(), emptyList(), "stopped") }
+
     val available: Boolean
         get() = SpeechRecognizer.isOnDeviceRecognitionAvailable(context) || SpeechRecognizer.isRecognitionAvailable(context)
 
@@ -67,6 +79,11 @@ class SpeechController(private val context: Context) {
      * Starts listening. [onFinal] receives the best transcript and everything else the recognizer
      * offered (alternatives, confidences, how long it listened); [onStateChange] is called on every state
      * change and with `null` on an error.
+     *
+     * 2.0 (Danny: "it captures what I'm saying and then immediately says it hears no sound and deletes
+     * it"): some recognizers end a session with "no match" / "no speech", or an empty final result, after
+     * they already showed the words. Whatever was heard is now delivered in those cases, and anything
+     * arriving after the words were delivered is ignored.
      */
     fun start(
         biasing: List<String> = emptyList(),
@@ -76,6 +93,9 @@ class SpeechController(private val context: Context) {
         error = null
         partial = ""
         level = 0f
+        heardSoFar = ""
+        delivered = false
+        main.removeCallbacks(deliverHeard)
         if (!available) {
             error = "Speech recognition isn't available on this phone"
             onStateChange(null)
@@ -89,6 +109,19 @@ class SpeechController(private val context: Context) {
         }
         val r = recognizer ?: create().also { recognizer = it }
         startedAt = System.currentTimeMillis()
+        finish = { text, alternatives, scores, how ->
+            if (!delivered && text.isNotBlank()) {
+                delivered = true
+                main.removeCallbacks(deliverHeard)
+                level = 0f
+                state = MicState.IDLE
+                partial = ""
+                error = null
+                if (how != "results") AppLog.i("Speech", "delivered what was heard ($how) after ${System.currentTimeMillis() - startedAt} ms")
+                onStateChange(MicState.IDLE)
+                onFinal(text.trim(), VoiceDetails(alternatives = alternatives, confidences = scores, listenedMs = System.currentTimeMillis() - startedAt, language = "en-US"))
+            }
+        }
         move(MicState.STARTING)
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) = move(MicState.LISTENING)
@@ -108,9 +141,27 @@ class SpeechController(private val context: Context) {
             }
 
             override fun onError(code: Int) {
+                if (delivered) {
+                    AppLog.i("Speech", "ignored recognizer error $code (${name(code)}) after the words were delivered")
+                    return
+                }
+                AppLog.w("Speech", "recognizer error $code (${name(code)}) after ${System.currentTimeMillis() - startedAt} ms, heard so far: ${heardSoFar.length} chars")
+                // Words were heard: they count, whatever the recognizer says at the end.
+                if (heardSoFar.isNotBlank() && code != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    finish?.invoke(heardSoFar, emptyList(), emptyList(), "error ${name(code)}")
+                    return
+                }
                 level = 0f
                 state = MicState.IDLE
-                AppLog.w("Speech", "recognizer error $code (${name(code)}) after ${System.currentTimeMillis() - startedAt} ms")
+                main.removeCallbacks(deliverHeard)
+                val switched = preferOnDevice && code in MODEL_ERRORS
+                if (switched) {
+                    // No on-device model for this language: use the phone's standard recognizer next time.
+                    preferOnDevice = false
+                    recognizer?.destroy()
+                    recognizer = null
+                    AppLog.w("Speech", "on-device recognizer unavailable — switching to the standard recognizer")
+                }
                 error = when (code) {
                     SpeechRecognizer.ERROR_NO_MATCH -> "Didn't catch any words — tap the mic and try again"
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Didn't hear anything — tap the mic and speak right away"
@@ -118,34 +169,41 @@ class SpeechController(private val context: Context) {
                     SpeechRecognizer.ERROR_AUDIO -> "The microphone couldn't record — is another app using it?"
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The recognizer is busy — try again in a second"
                     SpeechRecognizer.ERROR_CLIENT -> "Stopped"
-                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
-                        "Offline speech model missing — download English in Settings → System → Languages → On-device speech recognition"
+                    in MODEL_ERRORS -> if (switched) {
+                        "The on-device speech model isn't ready — tap the mic again to use the phone's standard recognizer"
+                    } else {
+                        "Speech service error (${name(code)}) — check the connection and try again"
+                    }
                     else -> "Speech error $code (${name(code)}) — try again"
                 }
                 onStateChange(null)
             }
 
             override fun onResults(results: Bundle?) {
-                level = 0f
-                state = MicState.IDLE
                 val texts = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                 val scores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)?.toList().orEmpty()
-                val best = texts.firstOrNull()?.trim()
-                if (best.isNullOrBlank()) {
-                    error = "Didn't catch any words — tap the mic and try again"
-                    AppLog.w("Speech", "recognizer returned no words")
-                    onStateChange(null)
-                    return
+                val best = texts.firstOrNull()?.trim().orEmpty()
+                when {
+                    delivered -> Unit
+                    best.isNotBlank() -> finish?.invoke(best, texts.drop(1), scores, "results")
+                    heardSoFar.isNotBlank() -> finish?.invoke(heardSoFar, emptyList(), emptyList(), "empty final result")
+                    else -> {
+                        level = 0f
+                        state = MicState.IDLE
+                        error = "Didn't catch any words — tap the mic and try again"
+                        AppLog.w("Speech", "recognizer returned no words")
+                        onStateChange(null)
+                    }
                 }
-                partial = ""
-                onStateChange(MicState.IDLE)
-                onFinal(best, VoiceDetails(alternatives = texts.drop(1), confidences = scores, listenedMs = System.currentTimeMillis() - startedAt, language = "en-US"))
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
-                partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                if (partial.isNotBlank() && state == MicState.LISTENING) move(MicState.HEARING)
+                if (delivered) return
+                val words = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                if (words.isBlank()) return // an empty update never wipes what was already heard
+                partial = words
+                heardSoFar = words
+                if (state == MicState.STARTING || state == MicState.LISTENING) move(MicState.HEARING)
             }
 
             override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -153,7 +211,8 @@ class SpeechController(private val context: Context) {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            // The standard recognizer (fallback) may use the network when there's no offline model.
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOnDevice)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
             // Alternatives are kept in the conversation log ("six" vs "sex" vs "6").
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
@@ -174,6 +233,7 @@ class SpeechController(private val context: Context) {
             r.startListening(intent)
         } catch (e: Exception) {
             state = MicState.IDLE
+            delivered = true
             error = "Couldn't start the microphone: ${e.message ?: e::class.java.simpleName}"
             AppLog.e("Speech", "startListening failed", e)
             onStateChange(null)
@@ -182,28 +242,46 @@ class SpeechController(private val context: Context) {
 
     /** The explicit on-device recognizer when the phone has one (Pixels do) — faster and private. */
     private fun create(): SpeechRecognizer =
-        if (SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
+        if (preferOnDevice && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
             SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         } else {
             SpeechRecognizer.createSpeechRecognizer(context)
         }
 
-    /** Finish now: whatever was said so far is transcribed and delivered. */
+    /**
+     * Finish now: whatever was said so far is transcribed and delivered. If the recognizer doesn't
+     * answer within [STOP_GRACE_MS], the words already on screen are sent as they are.
+     */
     fun stop() {
+        if (state == MicState.IDLE) return
         recognizer?.stopListening()
-        if (state == MicState.STARTING || state == MicState.LISTENING) {
-            recognizer?.cancel()
-            state = MicState.IDLE
-        } else if (state != MicState.IDLE) {
-            state = MicState.PROCESSING
-        }
         level = 0f
+        if (heardSoFar.isBlank() && (state == MicState.STARTING || state == MicState.LISTENING)) {
+            recognizer?.cancel()
+            delivered = true
+            state = MicState.IDLE
+            return
+        }
+        state = MicState.PROCESSING
+        main.removeCallbacks(deliverHeard)
+        main.postDelayed(deliverHeard, STOP_GRACE_MS)
     }
 
     fun destroy() {
+        main.removeCallbacks(deliverHeard)
+        delivered = true
         recognizer?.destroy()
         recognizer = null
         state = MicState.IDLE
+    }
+
+    private companion object {
+        const val STOP_GRACE_MS = 2500L
+        val MODEL_ERRORS = setOf(
+            SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE,
+            SpeechRecognizer.ERROR_SERVER, SpeechRecognizer.ERROR_SERVER_DISCONNECTED,
+            SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+        )
     }
 
     private fun name(code: Int): String = when (code) {

@@ -363,7 +363,7 @@ private fun AdviceSection() {
 
 /**
  * 2.0: bring in the old Meanwhile app's export (CGM + doses) so stats, the AI and learning start from
- * Danny's real history; its settings are offered, never applied without his tap.
+ * Danny's real history. The old app's settings are not imported.
  */
 @Composable
 private fun ImportSection() {
@@ -372,8 +372,6 @@ private fun ImportSection() {
     val scope = rememberSafeScope()
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<app.meanwhile.data.importer.ImportResult?>(null) }
-    var applied by remember { mutableStateOf<String?>(null) }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -387,7 +385,6 @@ private fun ImportSection() {
                         c.importer.import(input) { p -> status = p }
                     }
                 }
-                result = r
                 status = r.summary
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -408,37 +405,5 @@ private fun ImportSection() {
             Text(if (busy) "Importing…" else "Import from file…")
         }
         status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        val r = result
-        val state by c.profiles.current.collectAsStateWithLifecycle(initialValue = null)
-        val current = state?.profile
-        if (r != null && current != null && !r.settings.isEmpty) {
-            val changes = r.settings.changes(current)
-            if (changes.isEmpty()) {
-                Text("Your profile already has the old app's settings.", style = MaterialTheme.typography.bodySmall)
-            } else {
-                Text("The old app's settings:", style = MaterialTheme.typography.titleSmall)
-                changes.forEach { ch -> Text("${ch.path}: ${ch.old} → ${ch.new}", style = MaterialTheme.typography.bodySmall) }
-                Button(enabled = applied == null, onClick = {
-                    scope.launch {
-                        val now = c.profiles.current().profile
-                        val fresh = r.settings.changes(now)
-                        app.meanwhile.domain.profile.ProfilePatch.apply(now, fresh).onSuccess { updated ->
-                            val problems = app.meanwhile.domain.profile.ProfileValidation.problems(updated)
-                            if (problems.isNotEmpty()) {
-                                applied = "Not applied: " + problems.joinToString("; ")
-                                return@onSuccess
-                            }
-                            val v = c.profiles.saveVersion(
-                                updated, app.meanwhile.data.profile.ProfileSource.MANUAL, app.meanwhile.data.profile.ProfileStatus.ACCEPTED,
-                                "Manual: settings from the old app", changes = fresh,
-                            )
-                            c.conversation.action(null, "Applied the old app's settings → " + fresh.joinToString { "${it.path} ${it.new}" })
-                            applied = "Applied as profile v${v.version}"
-                        }.onFailure { applied = "Not applied: ${it.message}" }
-                    }
-                }) { Text("Use these settings") }
-                applied?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            }
-        }
     }
 }

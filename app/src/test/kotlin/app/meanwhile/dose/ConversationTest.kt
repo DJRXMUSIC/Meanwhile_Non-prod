@@ -271,13 +271,49 @@ class ConversationTest {
     }
 
     @Test
-    fun `a coffee adds units to the next meal instead of asking for a dose now`() = runBlocking {
+    fun `a coffee updates the profile and gets a next best action for the caffeine and its milk`() = runBlocking {
+        env.readings(at(-30), 30) { 100 }
         val cards = say("had a coffee", 0).cards
-        assertTrue(cards.toString(), cards.none { it is NbaCard })
-        val update = cards.single() as app.meanwhile.data.input.FactorUpdateCard
+        val update = cards.filterIsInstance<app.meanwhile.data.input.FactorUpdateCard>().single()
         assertEquals("added to your next dose", update.changes.single().window)
-        // The next meal's dose carries the coffee's unit.
-        val nba = say("BG 100 and 60 carbs", 5).cards.single() as NbaCard
-        assertEquals("Take 7 u", nba.action.headline)
+        val nba = cards.filterIsInstance<NbaCard>().single()
+        // 1/8 cup whole milk: 1.5 g carbs, 1 g fat, 1 g protein — dosed with the caffeine unit.
+        assertEquals("coffee (1/8 cup whole milk each)", nba.meal.description)
+        assertEquals(1.5, nba.meal.carbsG, 1e-9)
+        assertEquals(1.0, nba.meal.fatG, 1e-9)
+        assertEquals(1.0, nba.meal.proteinG, 1e-9)
+        assertEquals(ActionKind.TAKE_INSULIN, nba.action.kind)
+        assertEquals("Take 1 u", nba.action.headline)
+        assertEquals(1.0, nba.result.addedUnits, 1e-9)
+        assertEquals(cards.indexOf(update) + 1, cards.indexOf(nba))
+        // Not taken: the coffee's unit still rides on the next meal's dose.
+        val meal = say("BG 100 and 60 carbs", 5).cards.single() as NbaCard
+        assertEquals("Take 7 u", meal.action.headline)
+    }
+
+    @Test
+    fun `a black coffee is just the caffeine, and words about the cup are not a meal`() = runBlocking {
+        env.readings(at(-30), 30) { 100 }
+        val cards = say("had a coffee, black", 0).cards
+        assertTrue(cards.toString(), cards.none { it is app.meanwhile.data.input.MealMacrosCard })
+        val nba = cards.filterIsInstance<NbaCard>().single()
+        assertEquals(0.0, nba.meal.carbsG, 0.0)
+        assertEquals("Take 1 u", nba.action.headline)
+        assertTrue(nba.action.detail, nba.action.detail.contains("caffeine"))
+    }
+
+    @Test
+    fun `after a low, a coffee's dose math can say eat instead`() = runBlocking {
+        env.readings(at(-30), 30) { 62 }
+        val nba = say("had a coffee", 0).cards.filterIsInstance<NbaCard>().single()
+        assertEquals(ActionKind.TREAT_LOW, nba.action.kind)
+        assertEquals(0, nba.action.unitsNow)
+    }
+
+    @Test
+    fun `a dose said with the coffee is logged, without a second suggestion`() = runBlocking {
+        val cards = say("had a coffee and took 1 unit", 0).cards
+        assertTrue(cards.toString(), cards.any { it is DoseLoggedCard })
+        assertTrue(cards.toString(), cards.none { it is NbaCard })
     }
 }

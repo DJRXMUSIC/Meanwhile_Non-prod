@@ -561,7 +561,29 @@ previous one), highs and most lows between noon and 9 pm (15 of 27 lows at 4–7
   `details.source = "import"`. Doses at or after this app's own first dose are skipped (already
   logged here; IOB must not count them twice) — `DoseDao.earliestGivenAt` ignores imported rows.
   Imported doses have no proposal, so they never become lessons and can't move the tuner; they do
-  mark other lessons as confounded where they overlap. The old settings (ICR 9, ISF 40, target 110,
-  6 h, peak 75, delay 15) are shown with a "Use these settings" button — applied only on his tap.
-- **Edit settings** now lists the Next Best Action, forecast and notification numbers.
+  mark other lessons as confounded where they overlap. The old app's settings are not imported or
+  offered (Danny: "Remove the use these settings").
+- **Edit settings** now lists the Next Best Action, forecast, coffee and notification numbers.
+- **Coffee = caffeine + milk (Danny: "Treat it as having a 1/8 cup of whole milk for each coffee cup
+  unless stated").** A caffeine factor intent now also gets a Next Best Action: the caffeine units
+  (profile update, as before) plus the milk dosed as food — `coffee.milkCupsPerCoffee` 0.125 cup per
+  cup at whole-milk macros per cup (12 g carbs, 8 g fat, 8 g protein → 1.5/1/1 g per coffee). So the
+  answer is the usual one — take insulin, eat (e.g. after a low), or nothing — not just a profile
+  change. "Black"/"no milk" → no milk; "with 1/4 cup milk" (total) or "… each" replaces the default;
+  anything else in the cup (oat/almond/soy/skim, cream, sugar, syrup, a latte …) is estimated like
+  described food from the whole message. Leftover words that only describe the cup ("milk", "black")
+  are not a separate meal; real food in the same message ("and a bagel") is estimated together with
+  the coffee's milk, and macros given in numbers get the milk added. A dose said in the same message
+  is logged and no second suggestion is made. When the AI proposes the caffeine change, the next best
+  action is recomputed with it as soon as Danny accepts. If he doesn't take the suggested dose, the
+  caffeine units still ride on the next dose, as before.
 
+- **Chat anchored at the bottom.** The main list uses `reverseLayout` with items newest first, so it
+  opens on the latest message and keeps it in view as answers grow; it scrolls to the newest only
+  when a new message or alert arrives (it used to start at the top on every open).
+- **Voice keeps what it heard.** Danny's phone ended sessions with "no match"/"no speech" or an empty
+  final result after showing partial words, and the app discarded them. `SpeechController` now keeps
+  the last non-empty partial and delivers it on such an ending, ignores callbacks after delivery,
+  sends the on-screen words if the recognizer doesn't answer 2.5 s after the stop tap, and switches
+  to the standard recognizer (network allowed) after a model/language/server error from the
+  on-device one.

@@ -70,6 +70,10 @@ private val SETTINGS = listOf(
         "forecast.lookbackMin" to "Compare the CGM over the last (min)", "forecast.carryMin" to "Unexplained change fades over (min)",
         "forecast.minReadings" to "Fewest readings to compare", "forecast.maxReadingAgeMin" to "Newest reading at most (min old)",
     ),
+    "Coffee" to listOf(
+        "coffee.milkCupsPerCoffee" to "Milk per coffee (cups)", "coffee.milkCarbsPerCup" to "Milk carbs per cup (g)",
+        "coffee.milkFatPerCup" to "Milk fat per cup (g)", "coffee.milkProteinPerCup" to "Milk protein per cup (g)",
+    ),
     "Notifications" to listOf(
         "alerts.correctionAboveMgDl" to "Suggest a correction at BG ≥", "alerts.correctionMinUnits" to "… of at least (u)",
         "alerts.correctionMinMinutesSinceDose" to "… once the last dose is (min) old",

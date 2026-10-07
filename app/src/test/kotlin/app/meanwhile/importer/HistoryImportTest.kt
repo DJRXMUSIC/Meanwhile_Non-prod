@@ -1,7 +1,6 @@
 package app.meanwhile.importer
 
 import app.meanwhile.data.importer.HistoryImporter
-import app.meanwhile.domain.profile.Profile
 import app.meanwhile.testing.TestEnv
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -81,17 +80,11 @@ class HistoryImportTest {
     }
 
     @Test
-    fun `the old settings are offered as profile changes, never applied by the import`() = runBlocking {
-        val before = env.profiles.current().profile
-        val r = run()
-        assertEquals(before, env.profiles.current().profile)
-        val s = r.settings
-        assertEquals(9.0, s.icr!!, 0.0)
-        assertEquals(40.0, s.isf!!, 0.0)
-        assertEquals(110.0, s.target!!, 0.0)
-        assertEquals(360.0, s.durationMin!!, 0.0)
-        assertEquals(15.0, s.delayMin!!, 0.0)
-        val changes = s.changes(Profile())
-        assertEquals(listOf("dose.icr", "dose.isf", "dose.target", "iob.durationMin", "iob.delayMin"), changes.map { it.path })
+    fun `the old app's settings are not imported`() = runBlocking {
+        val before = env.profiles.current()
+        run()
+        val after = env.profiles.current()
+        assertEquals(before.profile, after.profile)
+        assertEquals(before.versionLabel, after.versionLabel)
     }
 }

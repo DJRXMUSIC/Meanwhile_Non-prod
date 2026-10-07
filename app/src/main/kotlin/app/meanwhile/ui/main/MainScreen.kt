@@ -130,21 +130,34 @@ fun MainScreen(onOpen: (String) -> Unit) {
         },
         bottomBar = { Composer(vm, profileState.profile) },
     ) { padding ->
+        // 2.0 (Danny: "the scrolling keeps bringing me back to top"): the list is anchored at the bottom,
+        // like a messaging app — it opens on the newest message, growing answers stay in view, and
+        // nothing pulls it away while he's reading further up. Items are listed newest first.
         val list = rememberLazyListState()
-        val lastTurn = vm.turns.lastOrNull()
-        // Follow the conversation: every new message, step and answer scrolls into view.
-        LaunchedEffect(vm.turns.size, lastTurn?.steps?.size, lastTurn?.session?.cards?.size, lastTurn?.error) {
-            val count = list.layoutInfo.totalItemsCount
-            if (count > 0) list.animateScrollToItem(count - 1)
+        LaunchedEffect(vm.turns.size) {
+            // A new message (sent, or an alert arriving): show it.
+            if (vm.turns.isNotEmpty()) list.animateScrollToItem(0)
         }
         LazyColumn(
             state = list,
+            reverseLayout = true,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Bottom),
         ) {
+            item(key = "bottom") { Spacer(Modifier.height(4.dp)) }
+            items(vm.turns.asReversed(), key = { it.id }) { turn -> TurnView(turn, profileState.profile, vm) }
+            if (vm.turns.isEmpty()) {
+                item(key = "hint") { EmptyHint() }
+            }
+            if (vm.history.isNotEmpty()) {
+                items(vm.history.asReversed(), key = { "h-${it.id}" }) { HistoryLine(it) }
+                item(key = "history-label") {
+                    Text("Earlier", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             item(key = "status") {
                 val setup = rememberSetupState()
                 val bg = rememberBgSnapshot()
@@ -162,17 +175,6 @@ fun MainScreen(onOpen: (String) -> Unit) {
                     pendingSeconds.forEach { p -> PendingSecondCard(p, now.toEpochMilli(), vm) }
                 }
             }
-            if (vm.history.isNotEmpty()) {
-                item(key = "history-label") {
-                    Text("Earlier", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                items(vm.history, key = { "h-${it.id}" }) { HistoryLine(it) }
-            }
-            if (vm.turns.isEmpty()) {
-                item(key = "hint") { EmptyHint() }
-            }
-            items(vm.turns, key = { it.id }) { turn -> TurnView(turn, profileState.profile, vm) }
-            item(key = "bottom") { Spacer(Modifier.height(4.dp)) }
         }
     }
 }

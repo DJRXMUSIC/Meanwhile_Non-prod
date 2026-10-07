@@ -1,4 +1,4 @@
-<!-- prompt version: converse-v2 -->
+<!-- prompt version: converse-v3 -->
 ## Job: converse
 
 Danny is talking to the app like a person. Answer him in words (`reply`) and say what, if anything,
@@ -40,6 +40,9 @@ Same meanings as the route job — only for things to act on now:
 - `followed` — "took it", "done", "ate it" after a suggestion.
 - `bg_reading` — a BG value he states.
 - `feedback` — starts with "feedback", "app note", "idea" or "bug".
+A coffee is one `factor_update` (span the coffee words, e.g. "2 coffees with oat milk"); don't add a
+separate `meal` for what's in the cup — the app counts 1/8 cup whole milk per cup unless he says
+otherwise, and estimates anything else in it. Food eaten with it ("and a bagel") is a `meal`.
 Chat, questions about the past and plans for later get **no** intents. `text_span` copies the exact
 words (the app reads numbers from it with code). `payload.offline_guess` is the phone's own reading,
 for reference — it guesses "meal" for anything it doesn't understand, so don't follow it blindly.

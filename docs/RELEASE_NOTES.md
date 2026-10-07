@@ -19,8 +19,19 @@ Obtainium at this repo — see `docs/INSTALL.md`). Updating keeps all your data.
   at most every 30 min. Settings → Suggestions on their own to switch any of them off.
 - **Your history comes with you.** Settings → Import history takes the old app's export: every CGM
   reading and dose, so stats, the AI and learning start from your real 100 days. Importing twice adds
-  nothing, and doses from after you started logging here are skipped. Your old settings are shown with
-  a button to use them — nothing changes until you tap it.
+  nothing, and doses from after you started logging here are skipped. Your old app's settings are not
+  brought over.
+- **Coffee comes with its milk.** "Had a coffee" updates your profile for the caffeine and gives the
+  usual next best action — take insulin, eat, or nothing — counting 1/8 cup of whole milk per cup
+  (1.5 g carbs, 1 g fat, 1 g protein) unless you say otherwise: "black", "with 1/4 cup milk", or
+  anything else in it (oat milk, cream, sugar, a latte) is estimated like food. The milk amounts are in
+  Edit settings → Coffee.
+- **Fixed: the chat jumping to the top.** It now opens on your newest message and stays at the bottom
+  like a messaging app; scroll up to read earlier ones and nothing pulls you away.
+- **Fixed: voice throwing your words away.** When the phone's recognizer ended with "no speech" or an
+  empty result after showing what you said, the words were deleted. Whatever was heard is now sent;
+  tapping the mic to stop sends what's on screen; and if the on-device speech model isn't available,
+  the next tap uses the phone's standard recognizer.
 - **Every message is kept.** Feedback, notifications, button taps and dismissed cards are in the
   conversation log too, and the nightly review now reads everything you said (a run, a snack you
   didn't log, feeling ill).
