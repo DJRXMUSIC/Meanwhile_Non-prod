@@ -46,6 +46,10 @@ class LearnPayload(private val db: AppDatabase) {
         val outcomes = db.outcomes().since(start14.toEpochMilli()).associateBy { it.doseId }
         val dosesByProposal = doses14.filter { it.proposalId != null }.groupBy { it.proposalId!! }
         val dayStartMs = dayStart.toEpochMilli()
+        // 1.4: everything Danny said (and what the app answered) — runs, meals mentioned in passing,
+        // how he felt — so the review can use what never became a structured record.
+        val talk14 = db.conversation().between(start14.toEpochMilli(), windowEnd.toEpochMilli())
+            .filter { it.kind == "message" || it.kind == "reply" || it.kind == "action" || it.kind == "notification" }
 
         fun followed(proposalId: String, finalUnits: Int): String =
             ProposalFollow.classify(finalUnits, dosesByProposal[proposalId].orEmpty())
@@ -101,9 +105,23 @@ class LearnPayload(private val db: AppDatabase) {
                         }
                     }
                 }
+                putJsonArray("conversation") {
+                    talk14.filter { it.recordedAt >= dayStartMs }.forEach { e ->
+                        addJsonObject {
+                            put("at", isoOf(e.recordedAt)); put("who", if (e.role == "app") "app" else "danny"); put("kind", e.kind)
+                            put("text", e.text.take(MAX_TEXT))
+                        }
+                    }
+                }
                 put("stats", AppJson.encodeToJsonElement(GlucoseSummary.serializer(), GlucoseStats.summarize(readings24, dayStart, windowEnd)))
             }
             putJsonObject("summary_14d") {
+                // Only his own words for the older days (the replies are in the 24 h detail).
+                putJsonArray("messages") {
+                    talk14.filter { it.kind == "message" && it.recordedAt < dayStartMs }.takeLast(MAX_MESSAGES_14D).forEach { e ->
+                        addJsonObject { put("at", isoOf(e.recordedAt)); put("text", e.text.take(MAX_TEXT)) }
+                    }
+                }
                 put("stats", AppJson.encodeToJsonElement(GlucoseSummary.serializer(), GlucoseStats.summarize(readings14, start14, windowEnd)))
                 putJsonArray("daily") {
                     var day = LocalDate.ofInstant(start14, zone)
@@ -144,5 +162,10 @@ class LearnPayload(private val db: AppDatabase) {
                 }
             }
         }
+    }
+
+    private companion object {
+        const val MAX_TEXT = 600
+        const val MAX_MESSAGES_14D = 1500
     }
 }

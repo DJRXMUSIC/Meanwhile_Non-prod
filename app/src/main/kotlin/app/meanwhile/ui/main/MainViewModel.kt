@@ -214,7 +214,7 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     /** "I took 6 u" (or a different amount) on a Next Best Action. */
-    fun logNba(card: NbaCard, nowUnits: Int, laterUnits: Int, reason: String?) = act(card, "Tapped: took $nowUnits u" + if (laterUnits > 0) " (+ $laterUnits u later)" else "") {
+    fun logNba(card: NbaCard, nowUnits: Int, laterUnits: Int, reason: String?) = act(card, "Tapped: took $nowUnits u" + (if (laterUnits > 0) " (+ $laterUnits u later)" else "") + (reason?.takeIf { it.isNotBlank() }?.let { " — why: $it" } ?: "")) {
         val logged = c.nba.logProposal(card, nowUnits, laterUnits, reason)
         replace(card.key, card.copy(loggedMessage = logged.message, loggedDoseId = logged.dose.id))
         logged.message
@@ -264,6 +264,7 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun dismiss(card: ResultCard) {
+        viewModelScope.launch { c.conversation.action(inputOf(card), "Dismissed: ${CardText.text(card).take(200)}") }
         when (card) {
             is NbaCard -> replace(card.key, card.copy(dismissed = true))
             is DoseConfirmCard -> replace(card.key, card.copy(dismissed = true))
@@ -338,9 +339,12 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
 
     /** Runs one card action at a time and writes what was tapped and what happened to the conversation log. */
     private fun act(card: ResultCard?, what: String, block: suspend () -> String) {
-        if (busy) return
-        busy = true
         val inputId = card?.let { inputOf(it) }
+        if (busy) {
+            viewModelScope.launch { c.conversation.action(inputId, "$what → ignored (still working on the last tap)") }
+            return
+        }
+        busy = true
         viewModelScope.launch {
             try {
                 val result = block()

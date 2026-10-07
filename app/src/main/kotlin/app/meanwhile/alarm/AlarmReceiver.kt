@@ -12,6 +12,8 @@ import app.meanwhile.R
 import app.meanwhile.notify.Notifications
 import app.meanwhile.format.formatTime
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -53,6 +55,18 @@ class AlarmReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(Alarms.notificationId(proposalId), n)
+        val c = (context.applicationContext as MeanwhileApp).container
+        val pending = goAsync()
+        c.appScope.launch {
+            try {
+                c.conversation.notification(
+                    "Second injection: $units u — split dose reminder",
+                    buildJsonObject { put("proposal_id", proposalId); put("units", units) },
+                )
+            } finally {
+                pending.finish()
+            }
+        }
     }
 }
 
@@ -67,6 +81,10 @@ class DoseActionReceiver : BroadcastReceiver() {
         c.appScope.launch {
             try {
                 val logged = c.nba.logSecond(proposalId, units)
+                c.conversation.action(
+                    null, "Tapped “Log $units u” on the reminder → " + if (logged) "Logged" else "Already logged",
+                    buildJsonObject { put("proposal_id", proposalId); put("via", "notification") },
+                )
                 Notifications.post(
                     context, Alarms.notificationId(proposalId), Notifications.CHANNEL_REMINDERS,
                     if (logged) "Logged $units u" else "Already logged",

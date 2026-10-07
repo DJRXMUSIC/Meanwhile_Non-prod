@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -208,6 +209,15 @@ class AppContainer(val app: Application) {
     suspend fun addFeedback(text: String, context: String) {
         val m = records.meta()
         db.feedback().insert(FeedbackEntity(m.id, m.userId, m.createdAt, m.recordedAt, text = text, context = context))
+        // Every message is in the conversation log too, wherever it was typed.
+        if (context == "crash") {
+            conversation.error(null, "Crash report saved: ${text.lineSequence().firstOrNull().orEmpty().take(200)}")
+        } else {
+            conversation.write(
+                ConversationLog.ROLE_USER, ConversationLog.KIND_MESSAGE, text,
+                kotlinx.serialization.json.buildJsonObject { put("via", "feedback_$context") },
+            )
+        }
         requestSync()
     }
 }

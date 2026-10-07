@@ -519,3 +519,11 @@ he says logged (and corrected), learn on Claude Opus at max effort, log everythi
   quiet on failure). Offline, words with no meal cue (offline confidence ≤ 0.5) get "I didn't catch…"
   instead of the macros form. The `route` job stays in the function for older APKs. No spoken replies
   (Danny: "Dont have it reply out loud").
+- **Every message is logged and used (1.4, Danny: "all messages should be logged").** Besides the
+  main chat, `conversation_log` now also gets: feedback typed in Settings (as a message, `via:
+  feedback_settings`), crash reports, every notification the app posts (`kind: notification`) and
+  taps on notification actions, dismissed cards, override reasons typed on a dose, and taps ignored
+  because the last one was still running. The learn cycle (prompt `learn_cycle-v3`) receives the last
+  24 h of the conversation word for word (`last_24h.conversation`) and Danny's messages from the
+  13 days before (`summary_14d.messages`, up to 1,500), so what he says without logging it — a run, a
+  snack, feeling ill — informs the review.

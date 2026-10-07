@@ -20,6 +20,8 @@ import app.meanwhile.testing.TestEnv
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -252,6 +254,20 @@ class ConversationTest {
     fun `no reply is asked for when the AI is off`() = runBlocking {
         val session = say("took 6 units", 0)
         assertNull(env.inputs.reply(session, now = at(0)))
+    }
+
+    @Test
+    fun `everything said reaches the nightly review word for word`() = runBlocking {
+        env.aiHooks = TalkingAi("Have a good run — tell me when you're back.")
+        // Real time: the log stamps replies with the clock, and the review window ends now.
+        env.inputs.process("going for a run in an hour", "voice")
+        env.inputs.process("took 6 units", "voice")
+        val end = Instant.now().plusSeconds(60)
+        val payload = app.meanwhile.data.learn.LearnPayload(env.db).build(Profile(), end, java.time.ZoneOffset.UTC, end)
+        val talk = payload["last_24h"]!!.jsonObject["conversation"]!!.jsonArray.map { it.jsonObject["text"]!!.jsonPrimitive.content }
+        assertTrue(talk.toString(), "going for a run in an hour" in talk)
+        assertTrue(talk.toString(), "Have a good run — tell me when you're back." in talk)
+        assertTrue(talk.toString(), "took 6 units" in talk)
     }
 
     @Test

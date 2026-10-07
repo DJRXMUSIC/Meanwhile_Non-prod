@@ -1,4 +1,4 @@
-<!-- prompt version: learn_cycle-v2 -->
+<!-- prompt version: learn_cycle-v3 -->
 ## Job: learn_cycle (continuous learning review)
 
 `mode` says which review this is:
@@ -9,6 +9,10 @@
 The payload has the last 24 hours in detail and a 14-day summary: CGM readings, meals, factor events,
 doses, every Next Best Action proposal versus the dose actually given, override reasons, BG outcomes
 at 2/3/4 h after each dose (with min/max over 4 h), time-in-range statistics, and the current profile.
+`last_24h.conversation` is everything Danny said to the app and what it answered, word for word, and
+`summary_14d.messages` his messages from the 13 days before. Use them for what the records miss —
+food or activity he mentioned without logging it, illness, stress, sleep, a dose he said he took
+but didn't log — and say so in the evidence when a change rests on something he said.
 Danny's goal is 80% time in range (70–180 mg/dL) sustained for 14 days.
 
 `learning` is what the app has already learned, computed deterministically on the phone:

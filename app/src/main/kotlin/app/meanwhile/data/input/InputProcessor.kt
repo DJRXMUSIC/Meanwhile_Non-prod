@@ -100,6 +100,7 @@ class InputProcessor(
     ): InputSession {
         val started = System.currentTimeMillis()
         var reply: String? = null
+        var replyModel: String? = null
         val text = raw.trim()
         val profile = profiles.current().profile
         val inputId = UuidV7.string(now.toEpochMilli())
@@ -137,6 +138,7 @@ class InputProcessor(
                     null
                 }
                 reply = conv?.reply?.takeIf { it.isNotBlank() }
+                replyModel = conv?.model
                 val r = conv?.route ?: offlineRoute
                 r to describe(r) + " · " + (if (conv?.route != null) aiLine() else offlineReason(skipAi))
             }
@@ -161,7 +163,7 @@ class InputProcessor(
             AppLog.w("Input", e.message.orEmpty())
             cards += InfoCard("err-$inputId", e.message.orEmpty(), isError = true)
         }
-        reply?.let { cards.add(0, ReplyCard("reply-$inputId", it, ai().lastCall()?.model)) }
+        reply?.let { cards.add(0, ReplyCard("reply-$inputId", it, replyModel ?: ai().lastCall()?.model)) }
         // Read by code and acted on without the AI: its words follow separately (see [reply]).
         val needsReply = reply == null && forcedPath == null && route.router != "ai"
         val session = InputSession(inputId, text, via, route, cards, switched = forcedPath != null, needsReply = needsReply)
@@ -179,12 +181,13 @@ class InputProcessor(
         val steps = Steps(session.inputId, onStep)
         val profile = profiles.current().profile
         val done = session.cards.map { CardText.text(it) }
-        val text = steps.run("reply", "Replying (AI)") {
-            val conv = skippable(skipAi) { ai().converse(session.raw, profile, session.inputId, stateJson(now), done, recentHistory(now)) }
-            val words = conv?.reply?.takeIf { it.isNotBlank() }
-            words to (if (words != null) aiLine() else "no reply")
+        val conv = steps.run("reply", "Replying (AI)") {
+            val c = skippable(skipAi) { ai().converse(session.raw, profile, session.inputId, stateJson(now), done, recentHistory(now)) }
+                ?.takeIf { it.reply.isNotBlank() }
+            c to (if (c != null) aiLine() else "no reply")
         } ?: return null
-        val card = ReplyCard("reply-${session.inputId}", text, ai().lastCall()?.model)
+        val text = conv.reply.trim()
+        val card = ReplyCard("reply-${session.inputId}", text, conv.model ?: ai().lastCall()?.model)
         conversation.write(ConversationLog.ROLE_APP, ConversationLog.KIND_REPLY, text, kotlinx.serialization.json.buildJsonObject { put("source", "ai_reply") }, session.inputId)
         return card
     }

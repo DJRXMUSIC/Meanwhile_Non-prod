@@ -376,7 +376,7 @@ interface ConversationLogDao : RecordDao<ConversationLogEntity> {
     suspend fun since(from: Long): List<ConversationLogEntity>
 
     /** What was said and answered (no processing steps), oldest first — the conversation history. */
-    @Query("SELECT * FROM conversation_log WHERE recordedAt >= :from AND kind IN ('message', 'reply', 'action', 'error') ORDER BY recordedAt, id")
+    @Query("SELECT * FROM conversation_log WHERE recordedAt >= :from AND kind IN ('message', 'reply', 'action', 'error', 'notification') ORDER BY recordedAt, id")
     suspend fun transcriptSince(from: Long): List<ConversationLogEntity>
 
     @Query("SELECT * FROM conversation_log WHERE inputId = :inputId ORDER BY recordedAt, id")
