@@ -1,3 +1,30 @@
+## MeanwhileV4 2.0 — it knows what's coming
+
+Install: download the APK below → open → allow "install unknown apps" for your browser (or point
+Obtainium at this repo — see `docs/INSTALL.md`). Updating keeps all your data.
+
+### New in 2.0
+- **It talks back.** Anything that isn't a plain dose, number or meal gets an answer in words, from
+  your live BG, insulin on board and the last two days — "how am I doing?", "going for a run in an
+  hour, anything I should do?", "why 6 units?". It only acts when there's something to act on; any
+  insulin or carb number comes from the dose math, never the AI. On screen only, never out loud.
+- **It sees what you didn't log.** The dose math now has two more lines: **carbs still absorbing**
+  from meals you logged, and **rising (or falling) more than logged insulin and food explain** —
+  what the CGM did over the last 30 min that nothing on record accounts for, carried forward. With
+  your history this removes most of the "eat carbs" answers you'd get while food you never logged is
+  still coming in. Both lines show in **Why?** and in the breakdown; every number is in Edit settings.
+- **It speaks up.** A notification when you're low or will be within 20 min, when insulin on board
+  will take a falling BG low (with the carbs to eat), and when you're at 180+ and a correction is due
+  (an hour after your last dose). Each one says exactly what to do, appears in the chat, and repeats
+  at most every 30 min. Settings → Suggestions on their own to switch any of them off.
+- **Your history comes with you.** Settings → Import history takes the old app's export: every CGM
+  reading and dose, so stats, the AI and learning start from your real 100 days. Importing twice adds
+  nothing, and doses from after you started logging here are skipped. Your old settings are shown with
+  a button to use them — nothing changes until you tap it.
+- **Every message is kept.** Feedback, notifications, button taps and dismissed cards are in the
+  conversation log too, and the nightly review now reads everything you said (a run, a snack you
+  didn't log, feeling ill).
+
 ## MeanwhileV4 1.4 — talk to it
 
 Install: download the APK below → open → allow "install unknown apps" for your browser (or point

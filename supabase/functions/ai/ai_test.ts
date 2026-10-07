@@ -141,6 +141,19 @@ Deno.test("every job has a versioned prompt, built as shared context + job", asy
   }
 });
 
+Deno.test("guard rails stay in the prompts: the AI never computes a dose, and replies are grounded", async () => {
+  const converse = await Deno.readTextFile(new URL("./prompts/converse.md", import.meta.url));
+  assert(converse.includes("Never compute a dose or a carb amount"), "converse must forbid computing doses");
+  assert(converse.includes("state.current_action"), "converse quotes numbers only from the dose math");
+  assert(converse.includes("state.forecast"), "converse knows the forecast terms");
+  const learn = await Deno.readTextFile(new URL("./prompts/learn_cycle.md", import.meta.url));
+  assert(learn.includes("last_24h.conversation"), "the review reads what Danny said");
+  // Chat with nothing to act on is a valid answer.
+  const check = ajv.compile(schemas.converse);
+  assert(check({ reply: "Steady at 112 — nothing to do.", intents: [] }), ajv.errorsText(check.errors));
+  assert(!check({ intents: [] }), "a reply is required");
+});
+
 Deno.test("jobs Danny waits on use fast models by default; the learn cycle keeps the deep ones", () => {
   for (const k of ["GEMINI_FAST_MODEL", "GEMINI_MODEL", "CLAUDE_FAST_MODEL", "CLAUDE_MODEL"]) Deno.env.delete(k);
   for (const job of ["route", "estimate_meal", "update_profile"] as Job[]) {

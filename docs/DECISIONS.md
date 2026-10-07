@@ -15,6 +15,9 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - 1.3 continuous learning, app log + diagnostics, full test suite: done (CI green)
 - 1.4 conversation-first: clear next best action, spoken dose logging + corrections, word-for-word
   conversation log + app logs in Supabase, learning on Claude Opus 5.5 (max effort, batch), quick AI fixed
+- 2.0 the app talks back (converse), every message logged and read by learning, the forecast (carbs on
+  board + unexplained CGM change) in the dose math, suggestions sent on their own, history import,
+  test suite revised
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -527,3 +530,38 @@ he says logged (and corrected), learn on Claude Opus at max effort, log everythi
   24 h of the conversation word for word (`last_24h.conversation`) and Danny's messages from the
   13 days before (`summary_14d.messages`, up to 1,500), so what he says without logging it — a run, a
   snack, feeling ill — informs the review.
+
+## Version 2.0 — from Danny's history
+Danny's export of the old app (2026-06-27 → 10-06, 102 days, ~38k readings, 946 rapid + 102 basal
+doses, no meals logged) was analysed in a session scratchpad; the data itself is never committed.
+85% in range 70–180, 0.2% below 70, ~9 rapid doses a day (mostly 2–3 u, half within 2 h of the
+previous one), highs and most lows between noon and 9 pm (15 of 27 lows at 4–7 pm after stacking).
+- **Forecast in the dose math (`domain/forecast`).** With his old settings (ISF 40, 6 h) the plain
+  "BG − IOB × ISF" forecast predicted a low at 40% of the moments he dosed; lows followed 5%. Food
+  he never logged is the missing piece, so two terms were added to the baseline, both shown in the
+  breakdown and in "why": carbs from logged meals still absorbing (linear, 10 min delay, 180 min —
+  `forecast.*`), and the CGM slope over the last 30 min minus what logged insulin and carbs explain,
+  carried forward fading to zero over 120 min (retrospective correction, as Loop). A faster rise
+  while logged carbs are on board uses those carbs up first (dynamic absorption), so a meal is never
+  dosed twice. Symmetric: an unexplained fall lowers the dose. Carry 120 min was picked by
+  backtest (90 min horizon, ~4,700 dose-free moments): false-low forecasts at ISF 40 fell from 1,668
+  to 704; the remaining bias is mostly ISF itself (clean corrections in his history dropped ~10–12
+  mg/dL per unit), which learning tunes — nothing is changed for him.
+- **Suggestions on their own (`domain/nba/Advisor`, `AdviceService`).** After every new CGM reading
+  the no-food Next Best Action is worked out; a notification goes out for a low now or within
+  `nba.predictMinutes`, for carbs when the forecast lands below 70 while falling, and for a
+  correction at BG ≥ 180 once the last rapid dose is ≥ 60 min old (his median gap is ~95 min) and
+  it's ≥ 1 u. Each kind repeats at most every 30 min. Every value is in `alerts.*`; switches in
+  Settings. Channel "What to do now" (high importance). Notifications are written to the
+  conversation (kind `notification`) and appear live in the chat with "What should I do?". Nothing
+  is ever logged as a dose by an alert. No spoken replies.
+- **History import.** Settings → Import history streams the old JSON export (`android.util.JsonReader`,
+  skipping each reading's `raw` copy). Readings get source `import:<old source>` and pass the same
+  dedupe as live readings; doses get deterministic ids (re-import adds nothing) and
+  `details.source = "import"`. Doses at or after this app's own first dose are skipped (already
+  logged here; IOB must not count them twice) — `DoseDao.earliestGivenAt` ignores imported rows.
+  Imported doses have no proposal, so they never become lessons and can't move the tuner; they do
+  mark other lessons as confounded where they overlap. The old settings (ICR 9, ISF 40, target 110,
+  6 h, peak 75, delay 15) are shown with a "Use these settings" button — applied only on his tap.
+- **Edit settings** now lists the Next Best Action, forecast and notification numbers.
+
