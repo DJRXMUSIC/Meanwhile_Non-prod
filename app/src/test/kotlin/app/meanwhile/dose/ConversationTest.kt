@@ -1,5 +1,6 @@
 package app.meanwhile.dose
 
+import app.meanwhile.data.input.AiHooks
 import app.meanwhile.data.input.DoseLoggedCard
 import app.meanwhile.data.input.InfoCard
 import app.meanwhile.data.input.InputSession
@@ -8,6 +9,8 @@ import app.meanwhile.data.input.NbaCard
 import app.meanwhile.data.input.Step
 import app.meanwhile.data.input.StepState
 import app.meanwhile.domain.nba.ActionKind
+import app.meanwhile.domain.profile.Profile
+import app.meanwhile.domain.router.RouteResult
 import app.meanwhile.testing.TestEnv
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -124,8 +127,9 @@ class ConversationTest {
     fun `every step is reported and the conversation is logged word for word`() = runBlocking {
         val steps = mutableListOf<Step>()
         val session = say("took 6 units", 0, steps)
-        assertEquals(listOf("understand", "understand", "log", "log"), steps.map { it.id })
-        assertEquals(listOf(StepState.RUNNING, StepState.DONE, StepState.RUNNING, StepState.DONE), steps.map { it.state })
+        // Read by code with certainty: understood at once, then the dose is logged.
+        assertEquals(listOf("understand", "log", "log"), steps.map { it.id })
+        assertEquals(listOf(StepState.DONE, StepState.RUNNING, StepState.DONE), steps.map { it.state })
 
         val rows = env.db.conversation().forInput(session.inputId)
         assertEquals(listOf("message", "step", "step", "reply"), rows.map { it.kind })
@@ -155,5 +159,23 @@ class ConversationTest {
         assertEquals(nba.proposalId, rebuilt.proposalId)
         assertEquals(nba.action, rebuilt.action)
         assertNull(env.nba.openProposal(at(120)))
+    }
+
+    @Test
+    fun `certain messages skip the AI router, food in words still goes to it`() = runBlocking {
+        val asked = mutableListOf<String>()
+        env.aiHooks = object : AiHooks {
+            override val online: Boolean = true
+            override suspend fun route(text: String, profile: Profile, inputId: String): RouteResult? {
+                asked += text
+                return null
+            }
+        }
+        say("took 6 units", 0)
+        say("BG 140 and 60 carbs", 1)
+        say("what should I do", 2)
+        assertTrue("no AI round trip for $asked", asked.isEmpty())
+        say("ate a turkey sandwich", 3)
+        assertEquals(listOf("ate a turkey sandwich"), asked)
     }
 }

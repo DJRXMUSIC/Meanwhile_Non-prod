@@ -107,6 +107,12 @@ class InputProcessor(
                 steps.done("understand", "Understood", describe(offlineRoute))
                 offlineRoute
             }
+            // 1.4: when code reads every part with certainty ("took 6 units", "60 carbs 20 fat",
+            // "BG 140", "2 coffees", "what should I do?") the AI round trip adds nothing but waiting.
+            confident(offlineRoute) -> {
+                steps.done("understand", "Understood", describe(offlineRoute) + " · instantly, no AI needed")
+                offlineRoute
+            }
             else -> steps.run("understand", if (ai().online) "Understanding (AI)" else "Understanding") {
                 val viaAi = if (ai().online) skippable(skipAi) { ai().route(text, profile, inputId) } else null
                 val r = viaAi ?: offlineRoute
@@ -334,6 +340,10 @@ class InputProcessor(
         }
     }
 
+    /** Every intent read by code with certainty: numbers, a dose, a factor keyword, a BG, a question. */
+    private fun confident(r: RouteResult): Boolean =
+        r.intents.isNotEmpty() && r.intents.all { it.confidence >= CONFIDENT && (it !is FactorIntent || it.factorId.isNotBlank()) }
+
     /** Runs an AI call unless Danny taps "Skip AI" first (then the offline path answers). */
     private suspend fun <T> skippable(skip: Deferred<Unit>?, block: suspend () -> T?): T? {
         if (skip == null) return block()
@@ -402,6 +412,8 @@ class InputProcessor(
     }
 
     private companion object {
+        /** Offline intents at or above this are certain (food described in words is 0.8 or less). */
+        const val CONFIDENT = 0.9
         val CORRECTION = Regex("^(correction|correct|check|nba|what should i (take|do)|dose check)\\b")
         val DOSE_WORDS = Regex("\\b(took|take|taken|insulin|units?|dose|shot|bolus|inject|humalog|lantus|long[- ]?acting)\\b")
     }

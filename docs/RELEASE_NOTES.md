@@ -1,9 +1,49 @@
-## MeanwhileV4 1.3 — learns all day
+## MeanwhileV4 1.4 — talk to it
 
-First complete build. Install: download the APK below → open → allow "install unknown apps" for your browser
-(or point Obtainium at this repo — see `docs/INSTALL.md`).
+Install: download the APK below → open → allow "install unknown apps" for your browser (or point
+Obtainium at this repo — see `docs/INSTALL.md`). Updating keeps all your data.
 
-### New in 1.3
+### New in 1.4
+- **A conversation, not a dashboard.** The main screen is now a chat: you say (or type) what you're
+  doing, the app answers. Glucose, trend, age and insulin on board sit in one line at the top; tap
+  "active factors" to unfold the rest. Earlier messages from today stay visible.
+- **One clear next step.** Every answer is one action in big type — **Take 6 u, then eat in 12 min**,
+  **Eat 16 g fast carbs** (a low, never insulin), **Eat ~12 g carbs** (insulin on board will
+  overshoot), **Eat — no insulin needed**, **Nothing to do now** or **Check your BG** — with the button
+  that logs it. **Why?** opens the full audit: BG used, the dose math line by line, the profile and
+  the reasons. The thresholds (low = below 70, 15 g rule, recheck 15 min) are profile values.
+- **Say it and it's logged.** "Took 6 units" is logged at once (with Undo). Right after a suggestion,
+  "took it", "done" or "ate it" logs exactly what it said; a different amount ("took 7") is logged
+  against it as an override. "BG 140" uses that value instead of the CGM for this answer.
+- **Fix it by saying so.** "Never mind, I only took 5", "make that 4", "I didn't take any",
+  "cancel that", "I took it 20 minutes ago" correct the last dose (up to 2 h back). Nothing is
+  overwritten: the correction is a new record and insulin on board, outcomes, learning and stats all
+  count the corrected dose.
+- **You see it working.** Each message shows its steps live — understanding, updating your profile,
+  estimating the meal, working out the next action — with the AI model and timing. If the AI is slow
+  a **skip** button answers offline. The keyboard drops and the box clears as soon as you send.
+- **A mic you can trust.** The mic shows every state — starting, *listening* (with a live level bar),
+  *hearing you* (the words appear as you speak), *writing it down* — and the phone ticks when it starts
+  and stops. What you said is sent when you stop talking (Settings → Voice to review it first).
+- **AI that answers in seconds.** Day-to-day AI is Gemini 3.8 Flash with minimal thinking (it timed
+  out before because Gemini 3.x thinks hard by default) and Claude Haiku 4.5 as the quick fallback.
+  Messages the phone reads with certainty ("took 6 units", "60 carbs 20 fat", "BG 140") skip the AI
+  entirely.
+- **Learning on Claude Opus 5.5 at max effort.** The nightly review — and the mid-day reviews after
+  new dose outcomes — go to Claude Opus 5.5 at maximum effort as an Anthropic batch: no time limit,
+  half price, results usually within an hour (the morning report says when it's still thinking).
+  Gemini Pro steps in if it fails. Settings → AI lets you choose per job.
+- **Everything is written down, word for word — in Supabase too.** Every message (with what the mic
+  heard and its alternatives), every step, every answer and every tap goes to a new conversation log;
+  every AI call keeps its full request; and the app's own log uploads with each sync. A problem can
+  now be looked up by time instead of reproduced.
+- **Bug capture.** Settings → Diagnostics → **Start fresh capture**, reproduce the problem, then
+  **Copy for AI**: the report then covers only what happened since — log and conversation included.
+- **Your own CGM app.** Settings → CGM → local web service accepts any app on the phone that serves
+  readings the way xDrip+ does. A custom address now counts as a real source (live readings and
+  back-fill) even without xDrip+ installed.
+
+### From 1.3
 - **Eversense built in — no xDrip+ needed.** Meanwhile reads your glucose straight from the Eversense
   app's notification (allow it once in the setup checklist). It stores each reading once, ignores
   re-posts and a value that's stuck for 35 minutes, and shows exactly what it sees if the

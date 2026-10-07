@@ -13,6 +13,8 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - M8 — stats + polish: done (CI green)
 - 1.1 simple UI + palettes, 1.2 reliability + self-managing setup + voice: done (CI green)
 - 1.3 continuous learning, app log + diagnostics, full test suite: done (CI green)
+- 1.4 conversation-first: clear next best action, spoken dose logging + corrections, word-for-word
+  conversation log + app logs in Supabase, learning on Claude Opus 5.5 (max effort, batch), quick AI fixed
 
 ## Repository & toolchain (M1)
 - **Repo.** Built in `DJRXMUSIC/Meanwhile_Non-prod` (the repo this session was given) rather than a
@@ -430,3 +432,75 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
   estimates and update_profile now use `gemini-3.8-flash` (Danny's choice; an unknown model name
   falls back to `gemini-flash-latest` once) unless `GEMINI_FAST_MODEL` says
   otherwise; the learn cycle keeps Pro.
+
+## Conversation-first (1.4)
+Danny's overnight brief: talk to the app, get one clear next action, see what it's doing, have what
+he says logged (and corrected), learn on Claude Opus at max effort, log everything for AI analysis.
+- **Main screen = conversation.** Turns (message → live steps → answer cards) for this app session,
+  plus the last 24 h from the conversation log as read-only history. BG/trend/age/IOB is one line in
+  the top bar; factors and the profile callout fold into one tappable line. Spec §15 still holds (BG
+  big enough, input prominent, profile callout one tap away).
+- **Next Best Action is decided by code** (`domain/nba/NextBestAction.kt`) from the engine's result:
+  take insulin / split / treat a low / eat carbs / eat with no insulin / nothing / check BG. The dose
+  math is unchanged. A low (< `nba.lowBelowMgDl`, 70) or a trend that reaches it within
+  `nba.predictMinutes` (20) with no dose to give → fast carbs = max(`nba.lowTreatCarbsG` (15, the rule
+  of 15), what insulin on board needs). raw < 0 → the engine's suggested carbs, unless below
+  `nba.minCarbsG` (5 g, rounding noise). A meal with a dose and a low BG is still inject + eat now
+  (the spec's lead-time rule). These are new tunable profile values (`Profile.nba`), validated like
+  the rest — not caution caps: they only decide which action to name, never the units. The action is
+  stored in the proposal snapshot (`ProposalSnapshot.action`) so learning sees what Danny was told.
+- **Saying a dose is logging it** (deviation from §9.6's confirm step and §9.1's "edit before
+  sending", at Danny's request): voice is sent when he stops talking (Settings → Voice turns that
+  off) and "took 6 units" is logged at once with Undo/Edit. Safety comes from corrections instead of
+  friction: "never mind, only 5", "make that 4", "I didn't take any", "cancel that", "I took it 20
+  min ago". A stated rapid dose within 90 min of an un-acted suggestion is logged against it
+  (proposal link + override reason), so learning keeps proposal-vs-given. "took it"/"done"/"ate it"
+  logs exactly what the open suggestion said (meal included; carbs-only actions log a meal with no
+  dose row). "BG 140" overrides the CGM for that message only.
+- **Corrections are append-only.** A correction is a new `doses` row with `supersedesId` = the row it
+  fixes (units 0 = didn't take it), copying proposal/split/details and noting the previous value.
+  Every consumer of insulin reads `DoseDao.effective*` (rows nothing supersedes): IOB, the caffeine
+  "next dose", outcome tagging, lessons, stats, the learn payload, the morning report, pending split
+  seconds (a cancelled first part cancels its reminder). Supabase gets `v_doses_effective`, and
+  `v_proposal_outcomes` reads it. A spoken correction reaches back 2 h at most; older ones are edited
+  on the card.
+- **Corrections are read by code, never by the AI.** The offline router recognises corrections,
+  "took it" and BG values first; when it does, the AI router is not asked, so a different AI reading
+  can never turn "only 5" into a second dose. The AI's `dose_correction` spans are re-parsed by code too.
+- **The AI router is skipped when code is certain** (every offline intent ≥ 0.9: numbers, a dose, a
+  factor keyword, a BG, "what should I do?"). Spec §9.2 says routing is an AI call online; for these
+  messages the AI added only waiting. Food described in words still goes to the AI.
+- **Quick AI timed out → fixed.** Gemini 3.x thinks deeply by default, so routing needed 15 s+; the
+  Claude fallback (Opus, thinking always on) was as slow. Quick jobs now send Gemini
+  `thinkingLevel` MINIMAL (route) / LOW (estimate, update) — retried without it if a model rejects it —
+  and fall back to Claude Haiku 4.5 (no `effort`, no server-side-fallback beta). Per provider 20 s,
+  per job 45 s (`budgets.ts`); the app waits 50 s, shows each step and offers "skip AI" after 3 s.
+- **Learning on Claude Opus 5.5 at max effort via the Message Batches API.** An Edge Function may
+  run ~150 s; a max-effort review can think far longer. `learn_cycle` with `batch: {mode: submit}`
+  queues one request (Opus 5.5, `effort: max`, 128K max tokens, structured output, cached system
+  prompt, no `fallbacks` — batches don't take it) and returns the batch id; the phone keeps it in a
+  marker and polls from the 15-minute housekeeping (`batch: {mode: poll}`); the finished result is
+  validated exactly like a direct answer. Not back in 8 h, failed, expired or refused → a direct
+  Gemini Pro review. Applies to nightly and mid-day reviews (Danny: "learning" on Opus, "day to day"
+  on Gemini Flash). Settings → AI has separate day-to-day and learning choices. Batch pricing is half
+  of standard; at max effort a review is still the main AI cost (roughly $0.5–1 each).
+- **Word for word.** `conversation_log` (Room v3 + Supabase, synced both ways): user messages (with
+  voice alternatives/confidences), each processing step (state, timing, model), the app's reply as
+  shown plus every card's full data, and every tap and its result. `ai_calls.request` keeps the full
+  request (job, preference, payload). `app_logs` (Supabase only, upload-only, deterministic ids,
+  redacted like the diagnostics report) receives every AppLog line with each sync; a cursor marker
+  makes uploads incremental. Storage is fine for years on the free tier (Postgres compresses JSON).
+- **How Claude reads the logs.** The data is in Danny's Supabase (`v_conversation`, `app_logs`,
+  `ai_calls`, `learning_log`). A Claude session can query it once the Supabase connector is connected
+  in claude.ai (customize → connectors); otherwise Diagnostics → Copy for AI. CI never prints these:
+  the repo is public, so Actions logs are public.
+- **Bug capture.** Diagnostics → Start fresh capture sets a marker; the report then has only the log,
+  problems and conversation since then. Stop clears it.
+- **Local CGM URL.** A base URL/path other than xDrip+'s default (`AppSettings.customWebSource`)
+  counts as a real source: back-fill runs and failures are reported even with xDrip+ not installed
+  (Danny's own app serving xDrip-style `sgv.json`). Cleartext HTTP stays limited to 127.0.0.1 /
+  localhost (network security config) — the service must run on the phone.
+- **Mic.** States STARTING → LISTENING (level bar from `onRmsChanged`) → HEARING (live partial text)
+  → PROCESSING, haptic ticks on start/stop/error, up to 3 alternatives kept, every recognizer error
+  named in plain words.
+

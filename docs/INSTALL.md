@@ -52,6 +52,8 @@ Once step 2 has finished:
    | `ANTHROPIC_API_KEY` | Anthropic key |
    | `GEMINI_FAST_MODEL` | optional — the default is already `gemini-3.8-flash` |
 
+   Learning runs on Claude Opus 5.5 at max effort — the Anthropic key does that; nothing else to set.
+
 No re-run needed — the function reads them on its next call, and the next CI run's checklist
 confirms both are set. Only your account can use the AI: the function allows just the project's
 first account, and CI locks sign-ups after you create it.
@@ -109,10 +111,21 @@ coding assistant (it says what the app is and where the code lives). Nothing sec
 
 ## Reference (optional)
 
-- **AI provider:** Settings → AI provider — Gemini first (default), Claude first, Gemini only, Claude
-  only. Model overrides as Supabase secrets (defaults): `GEMINI_MODEL` = `gemini-pro-latest`,
-  `CLAUDE_MODEL` = `claude-opus-5-5`, `CLAUDE_FAST_MODEL` (unset = same as `CLAUDE_MODEL`).
+- **AI:** Settings → AI has two choices. *Day to day* (your messages, meal estimates, factor
+  updates): Gemini first (default) = Gemini 3.8 Flash with Claude Haiku 4.5 as the quick fallback.
+  *Learning*: Claude first (default) = Claude Opus 5.5 at max effort, sent as an overnight batch, with
+  Gemini Pro as the fallback. Model overrides as Supabase secrets (defaults): `GEMINI_FAST_MODEL` =
+  `gemini-3.8-flash`, `GEMINI_MODEL` = `gemini-pro-latest`, `CLAUDE_FAST_MODEL` = `claude-haiku-4-5`,
+  `CLAUDE_MODEL` / `CLAUDE_LEARN_MODEL` = `claude-opus-5-5`, `CLAUDE_LEARN_EFFORT` = `max`.
   `ALLOWED_USER_IDS` (your user id — Settings → Account → Copy) makes the AI allowlist explicit.
+- **Logs for AI assistants:** every message, step, answer and tap (`conversation_log`), every AI call
+  with its full request (`ai_calls`) and every app log line (`app_logs`) are in your Supabase project.
+  To let Claude look them up itself, connect the Supabase connector at
+  `https://claude.ai/customize/connectors` and start a new session; otherwise Settings → Diagnostics →
+  **Start fresh capture**, reproduce the problem, **Copy for AI**.
+- **Your own CGM app:** Settings → CGM → local web service → its address (e.g. `http://127.0.0.1:PORT`)
+  and path → **Test connection** → **Save**. Any app on the phone serving xDrip-style `sgv.json` works;
+  it must be on the phone (127.0.0.1 or localhost).
 - **Fallback test:** temporarily change one character of `GEMINI_API_KEY` in Supabase, send "pizza and
   a coffee" — it still works, via Claude; Settings → AI provider shows the last error. Restore the key.
 - **Database password:** CI created the project with a random password it doesn't keep (it talks to

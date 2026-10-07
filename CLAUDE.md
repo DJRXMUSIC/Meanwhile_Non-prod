@@ -30,7 +30,11 @@ whenever you choose something the spec leaves open.
 - All suites: `scripts/test-all.sh` (skips what the machine can't run). Details: `docs/TESTING.md`.
 - App tests use `app/src/test/.../testing/TestEnv.kt` (real wiring, in-memory Room, Robolectric).
 - Log through `app.meanwhile.log.AppLog` (not `android.util.Log`) so it reaches the diagnostics
-  report Danny shares with AI assistants. Never log keys, tokens or emails.
+  report Danny shares with AI assistants and Supabase `app_logs`. Never log keys, tokens or emails.
+- Debugging a problem Danny describes: his Supabase has the conversation word for word
+  (`v_conversation`), every AI call with its full request (`ai_calls`) and the phone's log
+  (`app_logs`) — query by time if a Supabase connector is available (`docs/ANALYSIS.md` §4), else ask
+  for Settings → Diagnostics → Start fresh capture → Copy for AI. Never print them in CI (public repo).
 
 ## Building
 - Domain only (works offline from Google Maven): `./gradlew -p domain test`.

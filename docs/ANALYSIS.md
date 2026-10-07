@@ -32,14 +32,16 @@ date range — works offline, from the local copy.
 | `cgm_readings` | CGM reading (~every 5 min) | `recorded_at`, `mg_dl`, `trend_rate`, `direction`, `source` |
 | `meals` | meal / snack eaten | `recorded_at`, `carbs_g`, `fat_g`, `protein_g`, `is_estimate`, `description`, `details` (AI estimate provenance) |
 | `factor_events` | factor logged (coffee, drink, workout, sleep, …) | `recorded_at`, `factor_id`, `action`, `weight`, `window_minutes`, `units_add`, `details` |
-| `doses` | injection | `given_at`, `insulin`, `units`, `proposal_id`, `proposed_units`, `override_reason` |
+| `doses` | injection (or a correction of one) | `given_at`, `insulin`, `units`, `proposal_id`, `proposed_units`, `override_reason`, `supersedes_id` (a correction points at the row it fixes; units 0 = not taken) — use `v_doses_effective` for doses as corrected |
 | `proposals` | Next Best Action shown | `recorded_at`, `final_units`, `lead_time_min`, `split_plan`, `breakdown` (full math), `input_snapshot` |
 | `outcomes` | dose outcome (+2/+3/+4 h) | `dose_id`, `bg_2h`, `bg_3h`, `bg_4h`, `min_4h`, `max_4h` |
 | `profile_versions` | factor-profile version | `created_at`, `version`, `source`, `status`, `summary`, `profile` (full JSON), `diff`, `ai_call_id` |
 | `factor_definitions` | factor definition version | `factor_id`, `definition` |
-| `ai_calls` | AI request | `job`, `provider`, `model`, `latency_ms`, `fallback_used`, `validation`, `error`, `request_summary`, `response` |
+| `ai_calls` | AI request | `job`, `provider`, `model`, `latency_ms`, `fallback_used`, `validation` (`ok`, `invalid`, `error`, `submitted` = learn batch sent), `error`, `request_summary`, `request` (the full request, word for word), `response` |
 | `inputs` | thing you said or typed | `raw_text`, `via`, `path_taken` (offline / AI), `router_result` |
 | `feedback` | app note or dose feedback | `text`, `context` |
+| `conversation_log` | everything in the conversation, word for word | `role` (`user`, `app`, `system`), `kind` (`message`, `step`, `reply`, `action`, `error`), `text` (exactly what was said / shown), `details` (voice alternatives and confidences, step timing and AI model, every card's full data), `input_id` (links a message's rows) |
+| `app_logs` | line of the phone's own log | `recorded_at`, `level` (`D`/`I`/`W`/`E`), `tag`, `message`, `detail` (stack trace), `app_version`, `device` |
 | `learning_log` | learning journal entry | `kind` (`lessons`, `applied`, `proposed`, `kept`, `reverted`, `revert_proposed`, `undone`, `ai_review`, `error`), `summary`, `details` (lessons with their measured errors, the evidence for a change, the before/after evaluation), `supersedes_id` (a verdict points at the change it closes) |
 
 Nothing is ever updated or deleted; a correction is a new row. `seq` is the server's insertion order.
@@ -64,6 +66,8 @@ counts until the next, gaps excluded). With a steady 5-minute feed they agree to
 | `v_proposal_outcomes` | every proposal: carbs, BG, proposed vs given, `follow` (`followed` / `overridden` / `not_logged`), override reasons, outcome of the first injection |
 | `v_ai_calls_by_model` | AI calls per provider / model / job: ok / invalid / error counts, fallbacks, mean latency |
 | `v_learned_changes` | every learned profile change: path, old → new, evidence, and its `outcome` (`kept`, `reverted`, `undone`, `revert_proposed` or `under_evaluation`) with the reason |
+| `v_doses_effective` | doses as corrected: every dose no later correction supersedes |
+| `v_conversation` | the conversation in order with `local_ts` |
 
 ## 4. Example queries
 
@@ -187,6 +191,27 @@ select to_timestamp((l ->> 'atMillis')::bigint / 1000.0) at time zone meanwhile_
 from learning_log, jsonb_array_elements(details -> 'lessons') l
 where kind = 'lessons'
 order by at_local desc;
+```
+
+**What happened around 2 pm today — the conversation and the phone's log, interleaved**
+```sql
+select local_ts, 'chat' as src, role || '/' || kind as what, text
+from v_conversation
+where local_ts::date = current_date and extract(hour from local_ts) between 13 and 14
+union all
+select (recorded_at at time zone meanwhile_tz()), 'log', level || '/' || tag, message || coalesce(E'\n' || nullif(detail, ''), '')
+from app_logs
+where (recorded_at at time zone meanwhile_tz())::date = current_date
+  and extract(hour from recorded_at at time zone meanwhile_tz()) between 13 and 14
+order by 1;
+```
+
+**Slow or failed AI calls this week**
+```sql
+select recorded_at at time zone meanwhile_tz() as local_ts, job, provider, model, latency_ms, validation, error
+from ai_calls
+where recorded_at > now() - interval '7 days' and (validation <> 'ok' or latency_ms > 10000)
+order by recorded_at desc;
 ```
 
 ## 5. Adding your own views
