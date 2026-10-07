@@ -142,11 +142,31 @@ Deno.test("every job has a versioned prompt, built as shared context + job", asy
 Deno.test("jobs Danny waits on use a fast Gemini model by default; the learn cycle keeps Pro", () => {
   for (const k of ["GEMINI_FAST_MODEL", "GEMINI_MODEL", "CLAUDE_FAST_MODEL", "CLAUDE_MODEL"]) Deno.env.delete(k);
   for (const job of ["route", "estimate_meal", "update_profile"] as Job[]) {
-    assertEquals(modelFor("gemini", job), "gemini-flash-latest", job);
+    assertEquals(modelFor("gemini", job), "gemini-3.8-flash", job);
     assertEquals(modelFor("claude", job), "claude-opus-5-5", job);
   }
   assertEquals(modelFor("gemini", "learn_cycle"), "gemini-pro-latest");
   Deno.env.set("GEMINI_FAST_MODEL", "gemini-custom");
   assertEquals(modelFor("gemini", "update_profile"), "gemini-custom");
   Deno.env.delete("GEMINI_FAST_MODEL");
+});
+
+Deno.test("gemini: an unknown model name falls back to the -latest alias once", async () => {
+  Deno.env.set("GEMINI_API_KEY", "test-key");
+  Deno.env.delete("GEMINI_FAST_MODEL");
+  const asked: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const model = decodeURIComponent(String(url).split("/models/")[1].split(":")[0]);
+    asked.push(model);
+    if (model === "gemini-3.8-flash") return new Response('{"error":{"code":404}}', { status: 404 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "{}" }] }, finishReason: "STOP" }] }));
+  }) as typeof fetch;
+  try {
+    const r = await callGemini({ job: "route", system: "s", user: "u", schema: schemas.route, timeoutMs: 1000 });
+    assertEquals(asked, ["gemini-3.8-flash", "gemini-flash-latest"]);
+    assertEquals(r.model, "gemini-flash-latest");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

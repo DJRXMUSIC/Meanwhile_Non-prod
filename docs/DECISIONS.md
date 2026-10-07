@@ -427,5 +427,6 @@ Choices the spec leaves open, with the reason. Newest milestone at the bottom of
 - The CGM service's notification no longer flashes "waiting" when a source restarts the service.
 - **Fast jobs default to Gemini Flash** (first real use): with `GEMINI_FAST_MODEL` unset, route and
   update_profile ran on Gemini Pro, which took 8–15 s and hit the 15 s budget. Route, meal
-  estimates and update_profile now use `gemini-flash-latest` unless `GEMINI_FAST_MODEL` says
+  estimates and update_profile now use `gemini-3.8-flash` (Danny's choice; an unknown model name
+  falls back to `gemini-flash-latest` once) unless `GEMINI_FAST_MODEL` says
   otherwise; the learn cycle keeps Pro.

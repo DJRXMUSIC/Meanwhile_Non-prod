@@ -50,7 +50,7 @@ Once step 2 has finished:
    |---|---|
    | `GEMINI_API_KEY` | Gemini key |
    | `ANTHROPIC_API_KEY` | Anthropic key |
-   | `GEMINI_FAST_MODEL` | `gemini-flash-latest` (optional: faster routing and estimates) |
+   | `GEMINI_FAST_MODEL` | optional — the default is already `gemini-3.8-flash` |
 
 No re-run needed — the function reads them on its next call, and the next CI run's checklist
 confirms both are set. Only your account can use the AI: the function allows just the project's

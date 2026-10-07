@@ -25,11 +25,13 @@ export class ProviderError extends Error {
 // Model names come from env so they can be upgraded without code changes (spec §10.1).
 // *_FAST_MODEL is used for the jobs Danny waits on (route, estimate_meal, update_profile), which
 // have a 15 s budget. Gemini Pro routinely needs 8-15 s even for these, so Gemini's fast model
-// defaults to Flash; Claude's defaults to the main model unless CLAUDE_FAST_MODEL is set.
+// defaults to Gemini 3.8 Flash (Danny's choice); Claude's defaults to the main model unless
+// CLAUDE_FAST_MODEL is set. If Google doesn't know a configured model, the call retries once on
+// the matching "-latest" alias rather than failing.
 const FAST_JOBS: Job[] = ["route", "estimate_meal", "update_profile"];
 
 function geminiModel(job: Job): string {
-  if (FAST_JOBS.includes(job)) return Deno.env.get("GEMINI_FAST_MODEL") ?? "gemini-flash-latest";
+  if (FAST_JOBS.includes(job)) return Deno.env.get("GEMINI_FAST_MODEL") ?? "gemini-3.8-flash";
   return Deno.env.get("GEMINI_MODEL") ?? "gemini-pro-latest";
 }
 
@@ -113,9 +115,21 @@ export async function callClaude(c: ProviderCall): Promise<ProviderResult> {
 
 /** Gemini REST generateContent with JSON-schema output (generationConfig.responseJsonSchema). */
 export async function callGemini(c: ProviderCall): Promise<ProviderResult> {
+  const model = geminiModel(c.job);
+  try {
+    return await callGeminiModel(c, model);
+  } catch (e) {
+    const alias = FAST_JOBS.includes(c.job) ? "gemini-flash-latest" : "gemini-pro-latest";
+    if (e instanceof UnknownModelError && model !== alias) return await callGeminiModel(c, alias);
+    throw e;
+  }
+}
+
+class UnknownModelError extends ProviderError {}
+
+async function callGeminiModel(c: ProviderCall, model: string): Promise<ProviderResult> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw new ProviderError("GEMINI_API_KEY not set", false);
-  const model = geminiModel(c.job);
   let res: Response;
   try {
     res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -138,6 +152,7 @@ export async function callGemini(c: ProviderCall): Promise<ProviderResult> {
   }
   const body = await res.text();
   if (!res.ok) {
+    if (res.status === 404) throw new UnknownModelError(`Gemini doesn't know model ${model}: ${body.slice(0, 200)}`);
     const fatal = res.status === 401 || res.status === 403;
     throw new ProviderError(`Gemini HTTP ${res.status}: ${body.slice(0, 300)}`, !fatal);
   }
