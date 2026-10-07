@@ -93,7 +93,7 @@ class FactorUpdater(
                 def.kind == FactorKind.UNITS_PER_EVENT -> {
                     val units = r.unitsAdd ?: ((r.amount ?: 1.0) * (def.unitsPerEvent ?: 1.0))
                     events += event(m.id, m.userId, m.createdAt, m.recordedAt, def, "value", null, null, units, eventSource, inputId, details)
-                    views += FactorChangeView(def.id, def.name, "add", null, units, "until the next dose", r.note)
+                    views += FactorChangeView(def.id, def.name, "add", null, units, "added to your next dose", r.note)
                 }
                 r.action == "deactivate" -> {
                     profile = Activations.deactivate(profile, def.id)

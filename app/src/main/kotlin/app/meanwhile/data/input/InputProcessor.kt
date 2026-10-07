@@ -9,7 +9,6 @@ import app.meanwhile.data.json.AppJson
 import app.meanwhile.data.profile.ProfileRepository
 import app.meanwhile.data.profile.ProfileSource
 import app.meanwhile.domain.nba.ActionKind
-import app.meanwhile.domain.profile.FactorKind
 import app.meanwhile.domain.profile.Profile
 import app.meanwhile.domain.router.BgIntent
 import app.meanwhile.domain.router.DoseCorrectionIntent
@@ -189,8 +188,6 @@ class InputProcessor(
         if (forcedPath == "factor_update" && factorIntents.isEmpty()) cards += FactorPickerCard("pick-$inputId", text)
 
         val meal = route.intents.filterIsInstance<MealIntent>().firstOrNull()
-        val coffeeOnly = meal == null && factorIntents.any { profile.factor(it.factorId)?.kind == FactorKind.UNITS_PER_EVENT } &&
-            cards.none { it is AiProposalCard }
         val bgOnly = meal == null && bg != null && cards.none { it is AiProposalCard || it is DoseLoggedCard }
         when {
             meal != null && meal.hasMacros -> cards += nbaStep(
@@ -200,7 +197,6 @@ class InputProcessor(
             meal != null -> cards += steps.run("estimate", if (ai().online) "Estimating the meal (AI)" else "Reading the meal") {
                 mealNeedsMacros(meal, profile, inputId, bg, skipAi).let { it to CardText.text(it) }
             }
-            coffeeOnly -> cards += nbaStep(steps, MealDraft(description = "caffeine"), inputId, now, bg)
             bgOnly -> cards += nbaStep(steps, MealDraft(OfflineRouter.CHECK_DESCRIPTION), inputId, now, bg)
         }
     }

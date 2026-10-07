@@ -319,13 +319,8 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
             turn?.session?.cards?.filterIsInstance<NbaCard>()?.filter { it.loggedMessage == null && !it.dismissed }?.forEach { old ->
                 replace(old.key, c.nba.propose(old.meal, old.inputId, bgOverride = old.bgOverride))
             }
-            val cards = turn?.session?.cards.orEmpty()
-            if (turn != null && cards.none { it is NbaCard } && accepted.any { it.unitsAdd != null } && cards.none { it is MealMacrosCard }) {
-                val nba = c.nba.propose(MealDraft(description = "caffeine"), card.inputId)
-                val s = turn.session!!
-                update(turn.id) { it.copy(session = s.copy(cards = s.cards + nba)) }
-            }
-            message
+            // Units added for caffeine & co. ride on the next meal's dose — nothing to inject now.
+            if (accepted.any { it.unitsAdd != null }) "$message · added to your next meal's dose" else message
         }
 
     fun logSecond(proposalId: String, units: Int, skipped: Boolean = false) = act(null, if (skipped) "Skipped the second injection" else "Logged the second injection: $units u") {

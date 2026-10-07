@@ -178,4 +178,15 @@ class ConversationTest {
         say("ate a turkey sandwich", 3)
         assertEquals(listOf("ate a turkey sandwich"), asked)
     }
+
+    @Test
+    fun `a coffee adds units to the next meal instead of asking for a dose now`() = runBlocking {
+        val cards = say("had a coffee", 0).cards
+        assertTrue(cards.toString(), cards.none { it is NbaCard })
+        val update = cards.single() as app.meanwhile.data.input.FactorUpdateCard
+        assertEquals("added to your next dose", update.changes.single().window)
+        // The next meal's dose carries the coffee's unit.
+        val nba = say("BG 100 and 60 carbs", 5).cards.single() as NbaCard
+        assertEquals("Take 7 u", nba.action.headline)
+    }
 }
