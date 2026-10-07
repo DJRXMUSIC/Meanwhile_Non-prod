@@ -45,8 +45,11 @@ class CgmIntake(
     private val settings: SettingsStore,
     val status: MutableStateFlow<CgmFeedStatus>,
     private val eversense: EversenseSource? = null,
-    /** Whether xDrip+ is installed; without it there is nothing to back-fill from (and no problem). */
-    private val xdripInstalled: () -> Boolean = { true },
+    /**
+     * Whether a local CGM web service is expected to answer: xDrip+ is installed, or a custom address
+     * is set (1.4: another app serving xDrip-style readings). When none is, a failed back-fill is quiet.
+     */
+    private val webExpected: suspend () -> Boolean = { true },
 ) {
     private var job: Job? = null
     private val eversenseLock = Mutex()
@@ -130,17 +133,17 @@ class CgmIntake(
     /** Fills the gap since the newest stored reading (spec §13.3: on every service start). */
     suspend fun backCapture(): Int {
         val since = repo.latestNow()?.timestamp ?: Instant.now().minus(Duration.ofHours(24))
-        if (!xdripInstalled()) {
-            status.update { it.copy(lastBackCapture = "No back-fill: xDrip+ isn't installed (optional)") }
-            return 0
-        }
         return try {
             val n = repo.save(web.fetchSince(since))
             status.update { it.copy(lastBackCapture = "Back-filled $n readings") }
             n
         } catch (e: IOException) {
-            AppLog.w("CGM", "back-capture failed: ${e.message}")
-            status.update { it.copy(lastBackCapture = "Back-fill failed: ${e.message}") }
+            if (webExpected()) {
+                AppLog.w("CGM", "back-capture failed: ${e.message}")
+                status.update { it.copy(lastBackCapture = "Back-fill failed: ${e.message}") }
+            } else {
+                status.update { it.copy(lastBackCapture = "No back-fill: no local CGM web service is running (xDrip+ or compatible — optional)") }
+            }
             0
         }
     }

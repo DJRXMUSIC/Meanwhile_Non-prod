@@ -167,6 +167,7 @@ fun SetupScreen(onBack: () -> Unit) {
                         aiTest = when (out) {
                             is app.meanwhile.data.ai.AiOutcome.Ok -> "AI OK — ${out.provider} (${out.model}) in ${out.latencyMs} ms"
                             is app.meanwhile.data.ai.AiOutcome.Failed -> "AI failed: ${out.reason}"
+                            is app.meanwhile.data.ai.AiOutcome.Pending -> "AI accepted the request (${out.status})"
                         }
                     }
                 }) { Text("Test AI") }

@@ -22,8 +22,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         InputEntity::class,
         AiQueueEntity::class,
         LearningLogEntity::class,
+        ConversationLogEntity::class,
     ],
-    version = 2,
+    version = 3,
     // Debug and release KSP run in parallel and raced on the exported schema file; see DECISIONS.
     // Migrations are verified instead by MigrationTest (Room validates the migrated schema).
     exportSchema = false,
@@ -42,6 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun inputs(): InputDao
     abstract fun aiQueue(): AiQueueDao
     abstract fun learningLog(): LearningLogDao
+    abstract fun conversation(): ConversationLogDao
     abstract fun sync(): SyncDao
 
     companion object {
@@ -61,7 +63,25 @@ abstract class AppDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_learning_log_kind` ON `learning_log` (`kind`)",
         )
 
-        val MIGRATIONS = arrayOf(MIGRATION_1_2)
+        /** 1.4: the word-for-word conversation log, and the full request on every AI call. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_2_3_SQL.forEach(db::execSQL)
+                db.execSQL("ALTER TABLE `ai_calls` ADD COLUMN `request` TEXT NOT NULL DEFAULT '{}'")
+            }
+        }
+
+        /** Exactly the SQL Room generates for [ConversationLogEntity]. */
+        val MIGRATION_2_3_SQL = listOf(
+            "CREATE TABLE IF NOT EXISTS `conversation_log` (`id` TEXT NOT NULL, `userId` TEXT, `createdAt` INTEGER NOT NULL, " +
+                "`recordedAt` INTEGER NOT NULL, `supersedesId` TEXT, `role` TEXT NOT NULL, `kind` TEXT NOT NULL, `text` TEXT NOT NULL, " +
+                "`details` TEXT NOT NULL, `inputId` TEXT, `syncState` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_conversation_log_recordedAt` ON `conversation_log` (`recordedAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_conversation_log_syncState` ON `conversation_log` (`syncState`)",
+            "CREATE INDEX IF NOT EXISTS `index_conversation_log_inputId` ON `conversation_log` (`inputId`)",
+        )
+
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "meanwhile.db")

@@ -81,10 +81,31 @@ class NightlyJobs(
         val profile = FactorEngine.prune(profiles.current().profile, resetAt, zone())
         // Steps 2–4 (judge, tune, AI review, apply per autonomy) live in the learning engine.
         learning().afterOutcomes(now)
-        val result = learning().nightlyReview(now, resetAt, profile)
+        val result = learning().nightlyReview(now, resetAt, profile, night = date.toString())
         settings.setMarker("learn_result_$date", AppJson.encodeToString(LearnResult.serializer(), result))
         // A failure is still "done" for the alarm; the morning report offers a retry.
         settings.setMarker(KEY_LEARN_DONE, date.toString())
+        // A review sent to Claude as a batch reports when it's collected (collectReviews).
+        if (result.status != LearningEngine.STATUS_SUBMITTED) notifyMorning(result)
+        onWrite()
+        return result
+    }
+
+    /**
+     * Collects reviews running at Claude (1.4; every 15 min from housekeeping). A finished nightly
+     * review becomes that night's learn result and the morning report notification.
+     */
+    suspend fun collectReviews(now: Instant = Instant.now()) {
+        for ((review, result) in learning().pollReviews(now)) {
+            val night = review.night
+            if (review.mode == "nightly" && night != null) {
+                settings.setMarker("learn_result_$night", AppJson.encodeToString(LearnResult.serializer(), result))
+                notifyMorning(result)
+            }
+        }
+    }
+
+    private fun notifyMorning(result: LearnResult) {
         Notifications.post(
             context, Notifications.ID_MORNING_REPORT, Notifications.CHANNEL_REPORTS, "Morning report ready",
             when (result.status) {
@@ -95,8 +116,6 @@ class NightlyJobs(
             },
             destination = "morning", silent = true,
         )
-        onWrite()
-        return result
     }
 
     /** Spec §7.3: at 6 am, hours 10 pm–6 am above 180 → F11 weight until the 1 am reset. */
@@ -135,7 +154,7 @@ class NightlyJobs(
         // As far back as learning looks: after days without the app running, every dose still gets
         // its outcome (xDrip+ back-fills the readings) and becomes a lesson.
         val lookbackDays = maxOf(2, profiles.current().profile.learning.lookbackDays).toLong()
-        val doses = db.doses().since(now.minus(Duration.ofDays(lookbackDays)).toEpochMilli())
+        val doses = db.doses().effectiveSince(now.minus(Duration.ofDays(lookbackDays)).toEpochMilli())
             .filter { it.insulin == "rapid" && it.units > 0 && it.id !in tagged && Outcomes.ready(Instant.ofEpochMilli(it.givenAt), now) }
         if (doses.isEmpty()) return@withLock
         val readings = cgm.recent(Instant.ofEpochMilli(doses.minOf { it.givenAt }))

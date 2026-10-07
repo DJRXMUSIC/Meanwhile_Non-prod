@@ -59,9 +59,9 @@ class DoseContextBuilder(
         val latest = readings.lastOrNull() ?: cgm.latestNow()
         val trend = Trend.rate(readings.filter { Duration.between(it.timestamp, now).toMinutes() <= 30 })
         val lookback = now.minus(Duration.ofMinutes(p.iob.durationMin.toLong() + p.iob.delayMin.toLong() + 5))
-        val rapid = db.doses().since(lookback.toEpochMilli()).filter { it.insulin == "rapid" }
+        val rapid = db.doses().effectiveSince(lookback.toEpochMilli()).filter { it.insulin == "rapid" }
         val iob = Iob.total(rapid.map { RapidDose(it.units, it.givenAt) }, now.toEpochMilli(), p.iob)
-        val lastRapid = db.doses().latestRapid()?.givenAt
+        val lastRapid = db.doses().latestEffectiveRapid()?.givenAt
         val events = db.factorEvents().since(now.minus(Duration.ofDays(2)).toEpochMilli())
             .filter { it.unitsAdd != null && it.action != "deactivate" }
             .map { PendingUnitsEvent(it.factorId, it.unitsAdd ?: 0.0, amountOf(it.details), it.recordedAt) }

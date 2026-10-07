@@ -69,7 +69,21 @@ data class AppSettings(
     /** Color palette id (ui.theme.Palettes); unknown ids fall back to the default. */
     val palette: String = "teal",
     val learningAutonomy: LearningAutonomy = LearningAutonomy.AUTO,
+    /**
+     * Which provider learns (1.4): Claude first = Claude Opus at max effort, run overnight as a batch
+     * (no time limit), Gemini Pro if that fails. Day-to-day jobs use [aiProvider] (Gemini Flash first).
+     */
+    val learnProvider: AiProviderPreference = AiProviderPreference.CLAUDE_FIRST,
+    /** Send what the mic heard as soon as Danny stops talking (1.4); off = review it in the box first. */
+    val voiceAutoSend: Boolean = true,
 ) {
+    /**
+     * A local CGM web service at an address other than xDrip+'s default is configured (1.4: e.g.
+     * Danny's own app serving xDrip-style readings) — a real source even without xDrip+ installed.
+     */
+    val customWebSource: Boolean
+        get() = xdripBaseUrl.trim().trimEnd('/') != DEFAULT_XDRIP_URL || xdripPath.trim() != DEFAULT_XDRIP_PATH
+
     companion object {
         const val DEFAULT_XDRIP_URL = "http://127.0.0.1:17580"
         const val DEFAULT_XDRIP_PATH = "/sgv.json"
@@ -100,6 +114,8 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         val themeMode = stringPreferencesKey("theme_mode")
         val palette = stringPreferencesKey("theme_palette")
         val learningAutonomy = stringPreferencesKey("learning_autonomy")
+        val learnProvider = stringPreferencesKey("learn_provider")
+        val voiceAutoSend = booleanPreferencesKey("voice_auto_send")
         val syncLastSuccess = longPreferencesKey("sync_last_success")
         val syncLastAttempt = longPreferencesKey("sync_last_attempt")
         val syncLastError = stringPreferencesKey("sync_last_error")
@@ -122,6 +138,8 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         themeMode = ThemeMode.fromWire(this[Keys.themeMode]),
         palette = this[Keys.palette] ?: "teal",
         learningAutonomy = LearningAutonomy.fromWire(this[Keys.learningAutonomy]),
+        learnProvider = this[Keys.learnProvider]?.let { AiProviderPreference.fromWire(it) } ?: AiProviderPreference.CLAUDE_FIRST,
+        voiceAutoSend = this[Keys.voiceAutoSend] ?: true,
     )
 
     val settings: Flow<AppSettings> = store.data.map { it.toSettings() }
@@ -144,6 +162,8 @@ class SettingsStore(private val store: DataStore<Preferences>) {
             p[Keys.themeMode] = new.themeMode.wire
             p[Keys.palette] = new.palette
             p[Keys.learningAutonomy] = new.learningAutonomy.wire
+            p[Keys.learnProvider] = new.learnProvider.wire
+            p[Keys.voiceAutoSend] = new.voiceAutoSend
         }
     }
 

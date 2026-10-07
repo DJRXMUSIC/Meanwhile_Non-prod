@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,6 +50,7 @@ import app.meanwhile.data.sync.SyncOutcome
 import app.meanwhile.ui.common.LocalAppContainer
 import app.meanwhile.ui.common.ScreenScaffold
 import app.meanwhile.ui.common.SectionCard
+import app.meanwhile.format.formatTime
 import app.meanwhile.format.relativeTime
 import app.meanwhile.ui.nav.Routes
 import kotlinx.coroutines.launch
@@ -137,17 +139,41 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         appSettings?.let { CgmSettingsSection(it) }
 
         appSettings?.let { st ->
-            SectionCard("AI provider") {
+            SectionCard("AI") {
                 val status by c.ai.status.collectAsStateWithLifecycle()
-                Text("Which model the AI layer tries first. Dose math never depends on it.", style = MaterialTheme.typography.bodySmall)
+                Text("Dose math never depends on the AI — it only understands what you say, estimates meals and learns.", style = MaterialTheme.typography.bodySmall)
+                Text("Day to day (your messages, meal estimates, factor updates)", style = MaterialTheme.typography.titleSmall)
+                Text("Gemini = Gemini 3.8 Flash, answers in a few seconds. Each provider gets 20 s; every step shows on screen.", style = MaterialTheme.typography.bodySmall)
                 AiProviderPreference.entries.forEach { pref ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = st.aiProvider == pref, onClick = { scope.launch { c.settings.update { it.copy(aiProvider = pref) } } })
-                        Text(pref.label)
+                        Text(pref.label.removeSuffix(" (default)") + if (pref == AiProviderPreference.GEMINI_FIRST) " (default)" else "")
+                    }
+                }
+                Text("Learning (every night, and after new dose outcomes)", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Claude = Claude Opus 5.5 at max effort, sent as a batch so it can think as long as it needs (results usually " +
+                        "within an hour; Gemini Pro steps in if it fails). Gemini = Gemini Pro, answered directly.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                AiProviderPreference.entries.forEach { pref ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = st.learnProvider == pref, onClick = { scope.launch { c.settings.update { it.copy(learnProvider = pref) } } })
+                        Text(pref.label.removeSuffix(" (default)") + if (pref == AiProviderPreference.CLAUDE_FIRST) " (default)" else "")
                     }
                 }
                 status.lastOkAt?.let { Text("Last AI success ${relativeTime(it)}", style = MaterialTheme.typography.bodySmall) }
                 status.lastError?.let { Text("Last AI error: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
+            SectionCard("Voice") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Switch(checked = st.voiceAutoSend, onCheckedChange = { on -> scope.launch { c.settings.update { it.copy(voiceAutoSend = on) } } })
+                    Text("Send what I say as soon as I stop talking")
+                }
+                Text(
+                    "Off: what the mic heard goes into the text box for you to check and send. Either way, “never mind, only 5” fixes a dose.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
 
@@ -208,6 +234,33 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             val context = androidx.compose.ui.platform.LocalContext.current
             val clipboard = LocalClipboardManager.current
             var diagMessage by remember { mutableStateOf<String?>(null) }
+            var captureTick by remember { mutableStateOf(0) }
+            val captureSince by produceState<java.time.Instant?>(null, captureTick) { value = c.diagnostics.captureStartedAt() }
+            Text(
+                "Every log line and the whole conversation also go to your Supabase project with each sync (tables app_logs, " +
+                    "conversation_log, ai_calls), so you can just say when it happened.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (captureSince == null) {
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            c.diagnostics.startCapture()
+                            captureTick++
+                            diagMessage = "Capture started — reproduce the problem, then come back and tap Copy for AI"
+                        }
+                    }) { Text("Start fresh capture") }
+                } else {
+                    Text("Capturing since ${captureSince?.let { formatTime(it.toEpochMilli()) }}", modifier = Modifier.weight(1f))
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            c.diagnostics.stopCapture()
+                            captureTick++
+                            diagMessage = "Capture stopped"
+                        }
+                    }) { Text("Stop") }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
                     scope.launch {

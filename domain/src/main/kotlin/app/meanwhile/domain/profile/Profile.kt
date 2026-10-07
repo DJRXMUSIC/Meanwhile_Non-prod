@@ -20,6 +20,8 @@ data class Profile(
     val active: List<ActiveFactor> = emptyList(),
     /** How continuous learning behaves (local tuner + keep/revert evaluation). */
     val learning: LearningSettings = LearningSettings(),
+    /** How the Next Best Action is chosen from the dose math: insulin, carbs, or nothing (1.4). */
+    val nba: NbaSettings = NbaSettings(),
 ) {
     fun factor(id: String): FactorDefinition? = factors.firstOrNull { it.id == id }
 }
@@ -64,6 +66,24 @@ data class LearningSettings(
     /** New clean lessons, and hours since the last AI review, before an extra AI review runs. */
     val aiMinNewLessons: Int = 2,
     val aiMinHoursBetween: Double = 3.0,
+)
+
+/**
+ * Next Best Action (1.4): the dose math decides the units; these decide when the right action is
+ * not insulin — a low to treat, carbs to eat because insulin on board will overshoot, or nothing.
+ */
+@Serializable
+data class NbaSettings(
+    /** BG below this (mg/dL) is a low: fast carbs, no insulin. */
+    val lowBelowMgDl: Double = 70.0,
+    /** Fast carbs for a low (the rule of 15) — more when insulin on board needs more. */
+    val lowTreatCarbsG: Double = 15.0,
+    /** Minutes after treating a low before checking again. */
+    val recheckMin: Int = 15,
+    /** Minutes ahead the CGM trend is projected to see a low coming. */
+    val predictMinutes: Int = 20,
+    /** Carb suggestions below this (g) are rounding noise and treated as on target. */
+    val minCarbsG: Double = 5.0,
 )
 
 /** Exponential insulin activity model (spec §6). */

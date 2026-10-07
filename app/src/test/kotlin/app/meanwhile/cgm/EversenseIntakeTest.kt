@@ -35,7 +35,7 @@ class EversenseIntakeTest {
     private val status = MutableStateFlow(CgmFeedStatus())
     private val intake = CgmIntake(
         env.cgm, XdripWebSource(OkHttpClient(), env.settings), XdripBroadcastSource(env.context), env.settings, status,
-        EversenseSource(), xdripInstalled = { false },
+        EversenseSource(), webExpected = { env.settings.current().customWebSource },
     )
     private val t0: Instant = Instant.ofEpochMilli((Instant.now().minus(Duration.ofHours(3)).toEpochMilli() / 1000) * 1000)
     private fun at(min: Double): Instant = t0.plusMillis((min * 60_000).toLong())
@@ -132,8 +132,17 @@ class EversenseIntakeTest {
     }
 
     @Test
-    fun `without xDrip installed back-fill is skipped quietly`() = runBlocking {
+    fun `with no local web service back-fill is skipped quietly`() = runBlocking {
+        assertTrue("default address", !env.settings.current().customWebSource)
         assertEquals(0, intake.backCapture())
-        assertTrue(status.value.lastBackCapture!!.contains("isn't installed"))
+        assertTrue(status.value.lastBackCapture!!, status.value.lastBackCapture!!.startsWith("No back-fill"))
+    }
+
+    @Test
+    fun `a custom local address counts as a CGM source without xDrip+`() = runBlocking {
+        env.settings.update { it.copy(xdripBaseUrl = "http://127.0.0.1:9") } // nothing listens on port 9 (discard)
+        assertTrue(env.settings.current().customWebSource)
+        assertEquals(0, intake.backCapture())
+        assertTrue(status.value.lastBackCapture!!, status.value.lastBackCapture!!.startsWith("Back-fill failed"))
     }
 }

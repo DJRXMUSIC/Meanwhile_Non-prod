@@ -6,6 +6,9 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
+/** Doses no later row supersedes (1.4: corrections are new rows; see [DoseDao.effectiveSince]). */
+const val EFFECTIVE_DOSES = "id NOT IN (SELECT supersedesId FROM doses WHERE supersedesId IS NOT NULL)"
+
 /** Inserts ignore duplicates: ids are UUIDs, so a conflict is always the same record arriving twice. */
 interface RecordDao<T> {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -106,6 +109,31 @@ interface DoseDao : RecordDao<DoseEntity> {
 
     @Query("SELECT * FROM doses WHERE insulin = 'rapid' ORDER BY givenAt DESC LIMIT 1")
     suspend fun latestRapid(): DoseEntity?
+
+    @Query("SELECT * FROM doses WHERE id = :id")
+    suspend fun byId(id: String): DoseEntity?
+
+    // Doses in effect (1.4): a correction ("never mind, only 5") is a new row superseding the one it
+    // fixes, so everything that counts insulin reads the rows no later row supersedes.
+
+    @Query("SELECT * FROM doses WHERE givenAt >= :from AND $EFFECTIVE_DOSES ORDER BY givenAt")
+    suspend fun effectiveSince(from: Long): List<DoseEntity>
+
+    @Query("SELECT * FROM doses WHERE givenAt >= :from AND $EFFECTIVE_DOSES ORDER BY givenAt")
+    fun effectiveSinceFlow(from: Long): Flow<List<DoseEntity>>
+
+    @Query("SELECT * FROM doses WHERE recordedAt BETWEEN :from AND :to AND $EFFECTIVE_DOSES ORDER BY recordedAt")
+    suspend fun effectiveBetween(from: Long, to: Long): List<DoseEntity>
+
+    @Query("SELECT * FROM doses WHERE insulin = 'rapid' AND units > 0 AND $EFFECTIVE_DOSES ORDER BY givenAt DESC LIMIT 1")
+    suspend fun latestEffectiveRapid(): DoseEntity?
+
+    /** Doses logged (by when they were logged) since [from] and still in effect, newest first: what a correction can target. */
+    @Query("SELECT * FROM doses WHERE createdAt >= :from AND $EFFECTIVE_DOSES ORDER BY createdAt DESC, id DESC")
+    suspend fun effectiveLoggedSince(from: Long): List<DoseEntity>
+
+    @Query("SELECT * FROM doses WHERE proposalId = :proposalId AND $EFFECTIVE_DOSES ORDER BY givenAt")
+    suspend fun effectiveForProposal(proposalId: String): List<DoseEntity>
 }
 
 @Dao
@@ -331,6 +359,31 @@ interface LearningLogDao : RecordDao<LearningLogEntity> {
 }
 
 @Dao
+interface ConversationLogDao : RecordDao<ConversationLogEntity> {
+    @Query("SELECT * FROM conversation_log WHERE syncState = 0 ORDER BY createdAt LIMIT :limit")
+    suspend fun pending(limit: Int): List<ConversationLogEntity>
+
+    @Query("UPDATE conversation_log SET syncState = 1 WHERE id IN (:ids)")
+    suspend fun markSynced(ids: List<String>)
+
+    @Query("UPDATE conversation_log SET syncState = 2 WHERE id IN (:ids)")
+    suspend fun markFailed(ids: List<String>)
+
+    @Query("SELECT * FROM conversation_log WHERE recordedAt BETWEEN :from AND :to ORDER BY recordedAt, id")
+    suspend fun between(from: Long, to: Long): List<ConversationLogEntity>
+
+    @Query("SELECT * FROM conversation_log WHERE recordedAt >= :from ORDER BY recordedAt, id")
+    suspend fun since(from: Long): List<ConversationLogEntity>
+
+    /** What was said and answered (no processing steps), oldest first — the conversation history. */
+    @Query("SELECT * FROM conversation_log WHERE recordedAt >= :from AND kind IN ('message', 'reply', 'action', 'error') ORDER BY recordedAt, id")
+    suspend fun transcriptSince(from: Long): List<ConversationLogEntity>
+
+    @Query("SELECT * FROM conversation_log WHERE inputId = :inputId ORDER BY recordedAt, id")
+    suspend fun forInput(inputId: String): List<ConversationLogEntity>
+}
+
+@Dao
 interface SyncDao {
     @Query(
         """
@@ -346,6 +399,7 @@ interface SyncDao {
              + (SELECT COUNT(*) FROM feedback WHERE syncState = 0)
              + (SELECT COUNT(*) FROM inputs WHERE syncState = 0)
              + (SELECT COUNT(*) FROM learning_log WHERE syncState = 0)
+             + (SELECT COUNT(*) FROM conversation_log WHERE syncState = 0)
         """,
     )
     fun pendingCount(): Flow<Int>
@@ -364,6 +418,7 @@ interface SyncDao {
              + (SELECT COUNT(*) FROM feedback WHERE syncState = 2)
              + (SELECT COUNT(*) FROM inputs WHERE syncState = 2)
              + (SELECT COUNT(*) FROM learning_log WHERE syncState = 2)
+             + (SELECT COUNT(*) FROM conversation_log WHERE syncState = 2)
         """,
     )
     fun rejectedCount(): Flow<Int>

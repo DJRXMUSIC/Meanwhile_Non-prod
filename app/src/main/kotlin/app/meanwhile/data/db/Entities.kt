@@ -211,10 +211,12 @@ data class AiCallEntity(
     val fallbackUsed: Boolean = false,
     val requestSummary: String = "",
     @Serializable(with = JsonText::class) val response: String = "null",
-    /** ok | invalid | error | offline */
+    /** ok | invalid | error | offline | submitted */
     val validation: String,
     val error: String? = null,
     val inputId: String? = null,
+    /** 1.4: the full request sent to the AI layer (job, provider preference, payload) — word for word, for later analysis. */
+    @Serializable(with = JsonText::class) val request: String = "{}",
     @Transient override val syncState: Int = SyncState.PENDING,
 ) : Record
 
@@ -271,6 +273,31 @@ data class LearningLogEntity(
     @Serializable(with = JsonText::class) val details: String = "{}",
     val profileVersionId: String? = null,
     val aiCallId: String? = null,
+    @Transient override val syncState: Int = SyncState.PENDING,
+) : Record
+
+/**
+ * The conversation, word for word (1.4): what Danny said or typed (with the recognizer's alternatives),
+ * every processing step, what the app answered (text plus the full card data), and what he tapped.
+ * Written for AI analysis, not for reading: nothing is summarised or left out.
+ */
+@Serializable
+@Entity(tableName = "conversation_log", indices = [Index("recordedAt"), Index("syncState"), Index("inputId")])
+data class ConversationLogEntity(
+    @PrimaryKey override val id: String,
+    override val userId: String? = null,
+    @Serializable(with = EpochMillisIso::class) override val createdAt: Long,
+    @Serializable(with = EpochMillisIso::class) override val recordedAt: Long,
+    override val supersedesId: String? = null,
+    /** user | app | system */
+    val role: String,
+    /** message | step | reply | action | error */
+    val kind: String,
+    /** Exactly what was said or shown. */
+    val text: String,
+    @Serializable(with = JsonText::class) val details: String = "{}",
+    /** The message (inputs row) this belongs to. */
+    val inputId: String? = null,
     @Transient override val syncState: Int = SyncState.PENDING,
 ) : Record
 

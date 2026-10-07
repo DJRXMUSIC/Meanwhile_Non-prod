@@ -56,7 +56,7 @@ class StatsRepository(private val db: AppDatabase) {
                 d to GlucoseStats.summarize(readings, s, e)
             }
             val proposals = db.proposals().since(fromMs)
-            val doses = db.doses().since(fromMs - Duration.ofHours(6).toMillis())
+            val doses = db.doses().effectiveSince(fromMs - Duration.ofHours(6).toMillis())
             val outcomes = db.outcomes().since(fromMs)
             val follow = Reliability.follow(
                 proposals.map { ProposalRow(it.id, it.recordedAt, it.finalUnits) },

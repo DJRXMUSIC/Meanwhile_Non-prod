@@ -22,6 +22,7 @@ import app.meanwhile.data.net.NetworkMonitor
 import app.meanwhile.data.dose.DoseContextBuilder
 import app.meanwhile.domain.dose.DoseEngine
 import app.meanwhile.data.input.AiHooks
+import app.meanwhile.data.input.ConversationLog
 import app.meanwhile.data.input.FactorUpdater
 import app.meanwhile.data.input.InputProcessor
 import app.meanwhile.data.input.NbaService
@@ -79,19 +80,19 @@ class AppContainer(val app: Application) {
     val cgmStatus = MutableStateFlow(CgmFeedStatus())
     val eversense: EversenseSource by lazy { EversenseSource() }
     val xdripWeb: XdripWebSource by lazy {
-        XdripWebSource(http, settings) { ok, message ->
+        XdripWebSource(http, settings) { ok, message, s ->
             val was = cgmStatus.value.webOk
-            // xDrip+ is optional now that Eversense is read directly: without it installed, an
-            // unreachable web service is expected, not a problem.
-            val installed = EversenseSource.installed(app, XdripIntents.PACKAGE)
+            // The web service is optional now that Eversense is read directly: with neither xDrip+
+            // installed nor a custom address (another app serving readings), unreachable is expected.
+            val expected = s.customWebSource || EversenseSource.installed(app, XdripIntents.PACKAGE)
             // Polling runs every minute: log the transitions, and a failure at most every 30 min.
             if (ok && was == false) {
-                AppLog.i("CGM", "xDrip+ web service reachable again")
+                AppLog.i("CGM", "local CGM web service reachable again (${s.xdripBaseUrl})")
                 AppLog.clearThrottle("xdrip-web-failing")
-            } else if (!ok && installed && AppLog.throttle("xdrip-web-failing", 30 * 60_000L)) {
-                AppLog.w("CGM", "xDrip+ web service unreachable: $message")
+            } else if (!ok && expected && AppLog.throttle("xdrip-web-failing", 30 * 60_000L)) {
+                AppLog.w("CGM", "local CGM web service unreachable at ${s.xdripBaseUrl}${s.xdripPath}: $message")
             }
-            val shown = if (ok || installed) message else "xDrip+ isn't installed (optional — Meanwhile reads the Eversense app directly)"
+            val shown = if (ok || expected) message else "No local CGM web service running (optional — Meanwhile reads the Eversense app directly)"
             cgmStatus.update {
                 it.copy(webOk = ok, webMessage = shown, lastWebOkAt = if (ok) System.currentTimeMillis() else it.lastWebOkAt)
             }
@@ -100,7 +101,7 @@ class AppContainer(val app: Application) {
     val cgmIntake: CgmIntake by lazy {
         CgmIntake(
             cgm, xdripWeb, XdripBroadcastSource(app), settings, cgmStatus, eversense,
-            xdripInstalled = { EversenseSource.installed(app, XdripIntents.PACKAGE) },
+            webExpected = { settings.current().customWebSource || EversenseSource.installed(app, XdripIntents.PACKAGE) },
         )
     }
 
@@ -125,7 +126,8 @@ class AppContainer(val app: Application) {
 
     /** Online AI steps when Supabase is configured; the offline path never needs them. */
     val aiHooks: AiHooks get() = if (supabase != null) aiHooksImpl else object : AiHooks {}
-    val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync) { aiHooks } }
+    val conversation: ConversationLog by lazy { ConversationLog(db, records, ::requestSync) }
+    val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync, conversation) { aiHooks } }
 
     val learning: LearningEngine by lazy { LearningEngine(app, db, records, profiles, ai, settings, ::requestSync) }
     val nightly: NightlyJobs by lazy { NightlyJobs(app, db, records, profiles, cgm, settings, ::requestSync, learning = { learning }) }
@@ -171,6 +173,8 @@ class AppContainer(val app: Application) {
         runCatching { nightly.overnightIfNeeded() }.onFailure { AppLog.e("Housekeeping", "overnight check failed: ${it.message}", it) }
         // Continuous learning: new outcomes → lessons → judge open changes → tune → maybe an AI review.
         runCatching { learning.afterOutcomes() }.onFailure { AppLog.e("Housekeeping", "learning failed: ${it.message}", it) }
+        // Reviews running at Claude (max effort, as a batch) come back here.
+        runCatching { nightly.collectReviews() }.onFailure { AppLog.e("Housekeeping", "collecting AI reviews failed: ${it.message}", it) }
     }
 
     fun start() {

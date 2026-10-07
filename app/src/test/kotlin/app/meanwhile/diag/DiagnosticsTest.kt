@@ -24,7 +24,8 @@ class DiagnosticsTest {
         repeat(3) { AppLog.w("Sync", "sync failed (retrying automatically): HTTP 503 attempt $it", RuntimeException("upstream 503")) }
         AppLog.e("Auth", "token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlLXNpZ25hdHVyZQ for danny@example.com, apikey=AIzaSyA1234567890abcdefghijklmnopqrstu")
 
-        val report = AppContainer(app).diagnostics.report()
+        val c = AppContainer(app)
+        val report = c.diagnostics.report()
 
         for (section in listOf("# MeanwhileV4 diagnostics", "For the AI assistant", "## App & device", "## Health", "## Problems in the last 72 h",
             "## Crashes", "## AI-call failures", "## Learning", "## Database", "## Background markers", "## Log tail")) {
@@ -39,6 +40,22 @@ class DiagnosticsTest {
         assertFalse(report.contains("AIzaSyA1234567890"))
         assertTrue(report.contains("[redacted-token]"))
         assertTrue(report.contains("[email]"))
+        assertTrue(report.contains("## Conversation since"))
+
+        // A fresh capture: only what happens after it, the conversation word for word included.
+        Thread.sleep(5)
+        c.diagnostics.startCapture()
+        Thread.sleep(5)
+        AppLog.w("Mic", "recognizer error 7 after the capture")
+        c.conversation.write("user", "message", "never mind only 5")
+        val captured = c.diagnostics.report()
+        assertTrue(captured.contains("## Capture"))
+        assertTrue(captured.contains("## Log since the capture started"))
+        assertTrue(captured.contains("recognizer error 7 after the capture"))
+        assertFalse("lines from before the capture are left out", captured.contains("process start"))
+        assertTrue(captured.contains("user/message: never mind only 5"))
+        c.diagnostics.stopCapture()
+        assertTrue(c.diagnostics.report().contains("## Log tail"))
     }
 
     @Test

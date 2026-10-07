@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.meanwhile.data.input.AiProposalCard
 import app.meanwhile.data.input.DoseConfirmCard
+import app.meanwhile.data.input.DoseLoggedCard
+import app.meanwhile.data.input.MealLoggedCard
 import app.meanwhile.data.input.FactorPickerCard
 import app.meanwhile.data.input.FactorUpdateCard
 import app.meanwhile.data.input.FeedbackSavedCard
@@ -87,13 +89,15 @@ fun PathHeader(session: InputSession, onSwitch: (String) -> Unit) {
 @Composable
 fun ResultCardView(card: ResultCard, profile: Profile, vm: MainViewModel) {
     when (card) {
-        is NbaCard -> NbaCardView(card, vm)
+        is NbaCard -> AnswerCard(card, profile, vm)
+        is DoseLoggedCard -> DoseLoggedView(card, vm)
+        is MealLoggedCard -> MealLoggedView(card)
         is FactorUpdateCard -> FactorUpdateCardView(card, onUndo = { vm.undoFactors(card) })
         is MealMacrosCard -> MealMacrosCardView(card, onConfirm = { vm.confirmMeal(card, it) })
         is DoseConfirmCard -> DoseConfirmCardView(card, vm)
-        is FeedbackSavedCard -> SimpleCard("Saved to feedback", card.text)
+        is FeedbackSavedCard -> AppBubble("Saved to feedback: ${card.text}")
         is FactorPickerCard -> FactorPickerCardView(card, profile) { id, preset -> vm.pickFactor(card, id, preset) }
-        is InfoCard -> SimpleCard(if (card.isError) "Problem" else "Note", card.message, isError = card.isError)
+        is InfoCard -> AppBubble(card.message, isError = card.isError)
         is AiProposalCard -> AiProposalCardView(card, vm)
     }
 }
@@ -105,15 +109,30 @@ private fun AiProposalCardView(card: AiProposalCard, vm: MainViewModel) {
     val checked = remember(card.key) { androidx.compose.runtime.mutableStateListOf(*Array(card.changes.size) { true }) }
     val weights = remember(card.key) { androidx.compose.runtime.mutableStateListOf(*card.changes.map { it.weight?.let { w -> fmt(w) } ?: "" }.toTypedArray()) }
     val windows = remember(card.key) { androidx.compose.runtime.mutableStateListOf(*card.changes.map { it.windowMinutes?.toString() ?: "" }.toTypedArray()) }
+    var details by remember(card.key) { mutableStateOf(false) }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("AI proposal · Update Profile", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "${card.provider} · ${card.model}" + if (card.fallbackUsed) " (fallback)" else "",
-                style = MaterialTheme.typography.labelSmall, color = ai,
-            )
-            if (card.summary.isNotBlank()) Text(card.summary, color = ai)
-            card.changes.forEachIndexed { i, ch ->
+            Text("Update your profile? (AI proposal)", style = MaterialTheme.typography.titleSmall)
+            // 1.4: one line per change; the editable fields, model and reasons are under "Details".
+            if (!details) {
+                card.changes.forEach { ch ->
+                    Text(
+                        "${ch.name}: " + when {
+                            ch.action == "deactivate" -> "off (back to 1.00)"
+                            ch.unitsAdd != null -> "+${fmt(ch.unitsAdd, 1)} u at your next dose"
+                            else -> "weight ${ch.weight?.let { fmt(it) } ?: "default"}" + (ch.windowMinutes?.let { " for ${if (it % 60 == 0) "${it / 60} h" else "$it min"}" } ?: "")
+                        },
+                        color = ai, fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            } else {
+                Text(
+                    "${card.provider} · ${card.model}" + if (card.fallbackUsed) " (fallback)" else "",
+                    style = MaterialTheme.typography.labelSmall, color = ai,
+                )
+                if (card.summary.isNotBlank()) Text(card.summary, color = ai)
+            }
+            if (details) card.changes.forEachIndexed { i, ch ->
                 HorizontalDivider()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.Checkbox(
@@ -177,107 +196,17 @@ private fun AiProposalCardView(card: AiProposalCard, vm: MainViewModel) {
                         }
                         vm.decideAi(card, accepted, edited)
                     }) { Text("Accept") }
-                    TextButton(onClick = { vm.decideAi(card, emptyList(), false) }) { Text("Reject all") }
+                    TextButton(onClick = { vm.decideAi(card, emptyList(), false) }) { Text("Reject") }
+                    TextButton(onClick = { details = !details }) { Text(if (details) "Less" else "Details / edit") }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SimpleCard(title: String, body: String, isError: Boolean = false) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = if (isError) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer) else CardDefaults.cardColors(),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(body, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-@Composable
-fun NbaCardView(card: NbaCard, vm: MainViewModel) {
-    val r = card.result
-    val colors = LocalGlucoseColors.current
-    var editing by remember { mutableStateOf(false) }
-    var showBreakdown by remember { mutableStateOf(true) }
-    var bgEdit by remember { mutableStateOf(false) }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Next Best Action", style = MaterialTheme.typography.titleSmall)
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("${r.finalUnits} u", fontSize = 56.sp, fontWeight = FontWeight.Bold)
-                Column(Modifier.padding(bottom = 10.dp)) {
-                    r.split?.let { Text("${it.firstUnits} u now + ${it.secondUnits} u at +${it.secondAfterMin} min", fontWeight = FontWeight.SemiBold) }
-                    r.leadTimeMin?.let { Text(if (it == 0) "Eat now" else "Inject, then eat in $it min") }
-                }
-            }
-            r.suggestedCarbsG?.let {
-                Text("Projected below target — consider ~$it g carbs", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
-            }
-            // BG used for this calculation
-            val bg = card.input.bg
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    if (bg != null) "BG ${bg.roundToInt()} ${Trend.arrow(card.input.trendRate)}" else "BG unknown",
-                    color = colors.forMgDl(bg?.roundToInt(), card.bgStale), fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    buildString {
-                        card.input.trendRate?.let { append("${fmt(it, 1)}/min · ") }
-                        append(card.bgAgeMinutes?.let { "$it min old" } ?: "no reading")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                TextButton(onClick = { bgEdit = true }) { Text("Use other BG") }
-            }
-            if (card.bgStale) {
-                Text("⚠ CGM reading is stale (over 15 min) — check before dosing", color = MaterialTheme.colorScheme.error)
-            }
-            if (card.meal.description.isNotBlank() || card.meal.carbsG > 0) {
-                Text(
-                    "${card.meal.description.ifBlank { "Meal" }}: ${fmt(card.meal.carbsG, 0)} C / ${fmt(card.meal.fatG, 0)} F / " +
-                        "${fmt(card.meal.proteinG, 0)} P" + (if (card.meal.liquidOrSugary) " · liquid/sugary" else "") +
-                        (if (card.meal.isEstimate) " · AI estimate (confirmed)" else ""),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            ProfileCallout(card.profileLabel, card.profileVersion)
-            TextButton(onClick = { showBreakdown = !showBreakdown }) { Text(if (showBreakdown) "Hide breakdown" else "Show breakdown") }
-            if (showBreakdown) Breakdown(card.input, r, profileFor(card))
-            Text("Calculated in ${card.computeMs} ms · ${formatTime(card.computedAt)}", style = MaterialTheme.typography.labelSmall)
-            when {
-                card.loggedMessage != null -> Text("✓ ${card.loggedMessage}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                card.dismissed -> Text("Dismissed — nothing logged", style = MaterialTheme.typography.bodySmall)
-                else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        vm.logNba(card, r.split?.firstUnits ?: r.finalUnits, r.split?.secondUnits ?: 0, null)
-                    }) { Text("Log dose as shown") }
-                    OutlinedButton(onClick = { editing = true }) { Text("Edit amount") }
-                    TextButton(onClick = { vm.dismiss(card) }) { Text("Dismiss") }
-                }
-            }
-        }
-    }
-    if (editing) {
-        EditDoseDialog(card, onDismiss = { editing = false }) { now, later, reason ->
-            editing = false
-            vm.logNba(card, now, later, reason)
-        }
-    }
-    if (bgEdit) {
-        NumberPromptDialog("BG for this calculation (mg/dL)", "", onDismiss = { bgEdit = false }) {
-            bgEdit = false
-            vm.recompute(card, it)
         }
     }
 }
 
 /** The proposal stores the profile it used; the breakdown needs its numbers. */
 @Composable
-private fun profileFor(card: NbaCard): Profile =
+internal fun profileFor(card: NbaCard): Profile =
     remember(card.proposalId) {
         card.profileVersion?.let { runCatching { app.meanwhile.domain.profile.ProfileJson.decode(it.profile) }.getOrNull() } ?: Profile()
     }
@@ -306,7 +235,7 @@ fun sourceLabel(source: String) = when (source) {
 }
 
 @Composable
-private fun EditDoseDialog(card: NbaCard, onDismiss: () -> Unit, onLog: (Int, Int, String?) -> Unit) {
+internal fun EditDoseDialog(card: NbaCard, onDismiss: () -> Unit, onLog: (Int, Int, String?) -> Unit) {
     val split = card.result.split
     var now by remember { mutableStateOf((split?.firstUnits ?: card.result.finalUnits).toString()) }
     var later by remember { mutableStateOf((split?.secondUnits ?: 0).toString()) }

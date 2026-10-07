@@ -14,6 +14,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -95,5 +96,14 @@ class CgmIntakeTest {
         // Falls back to the broadcast exactly like an unreachable service.
         intake.acceptBroadcast(broadcast(t, 101))
         assertEquals(101, env.cgm.latestNow()!!.mgDl)
+    }
+
+    @Test
+    fun `back-fill reads any local app that serves xDrip-style readings`() = runBlocking {
+        // The test server is "Danny's own app" at a custom address: no xDrip+ involved.
+        assertTrue(env.settings.current().customWebSource)
+        body = "[${sgv(t.minusSeconds(600), 118)}, ${sgv(t.minusSeconds(300), 121)}]"
+        assertEquals(2, intake.backCapture())
+        assertEquals(121, env.cgm.latestNow()!!.mgDl)
     }
 }

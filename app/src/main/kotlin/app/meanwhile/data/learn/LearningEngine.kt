@@ -16,6 +16,7 @@ import app.meanwhile.data.profile.ProfileSource
 import app.meanwhile.data.profile.ProfileStatus
 import app.meanwhile.data.profile.changes
 import app.meanwhile.data.profile.decodedProfile
+import app.meanwhile.data.settings.AiProviderPreference
 import app.meanwhile.data.settings.LearningAutonomy
 import app.meanwhile.data.settings.SettingsStore
 import app.meanwhile.domain.dose.DoseResult
@@ -100,6 +101,21 @@ data class LearningStatus(
     val lastAiReviewAt: Long?,
 )
 
+/** A review sent to Claude as a batch and not collected yet (1.4); kept in a marker across restarts. */
+@Serializable
+data class PendingReview(
+    val batchId: String,
+    /** nightly | incremental */
+    val mode: String,
+    val submittedAt: Long,
+    /** The lessons the review covers (marked reviewed once it answers). */
+    val lessonIds: List<String>,
+    /** For a nightly review: the night it belongs to (yyyy-mm-dd). */
+    val night: String? = null,
+    val callId: String? = null,
+    val model: String? = null,
+)
+
 /**
  * Continuous learning (1.3). After every batch of dose outcomes: document the new lessons, judge
  * every open learned change (keep / revert), and let the local tuner move ICR, ISF and
@@ -135,7 +151,7 @@ class LearningEngine(
             val result = runCatching { AppJson.decodeFromString(DoseResult.serializer(), e.breakdown) }.getOrNull()
             if (snapshot == null || result == null) null else ProposalFacts(e.id, e.recordedAt, snapshot.doseInput, result, profileFor(e.profileVersionId))
         }
-        val doses = db.doses().since(from).map { DoseRow(it.id, it.givenAt, it.insulin, it.units, it.proposedUnits, it.proposalId) }
+        val doses = db.doses().effectiveSince(from).map { DoseRow(it.id, it.givenAt, it.insulin, it.units, it.proposedUnits, it.proposalId) }
         val outcomes = db.outcomes().since(from).map { OutcomeRow(it.doseId, it.bg2h, it.bg3h, it.bg4h, it.min4h, it.max4h) }
         val meals = db.meals().between(from - HOUR_MS, now.toEpochMilli() + 5 * HOUR_MS).map { MealRow(it.recordedAt, proposalIdOf(it.details)) }
         return Lessons.build(proposals, doses, outcomes, meals, zone(), p.learning)
@@ -219,6 +235,8 @@ class LearningEngine(
     private suspend fun maybeAiReview(now: Instant, force: Boolean): String? {
         if (!ai.reachable()) return null
         return aiLock.withLock {
+            // A review still running at Anthropic covers these lessons; don't stack another on it.
+            if (pendingReviews().isNotEmpty() && !force) return@withLock null
             val profile = profiles.current().profile
             val s = profile.learning
             val last = settings.marker(KEY_LAST_AI)?.toLongOrNull()
@@ -232,19 +250,127 @@ class LearningEngine(
     }
 
     /** The nightly AI review (called by [NightlyJobs] at the 1 am reset). */
-    suspend fun nightlyReview(now: Instant, windowEnd: Instant, analysisProfile: Profile): LearnResult =
-        aiLock.withLock { aiReview("nightly", now, lessons(now), windowEnd, analysisProfile) }
+    suspend fun nightlyReview(now: Instant, windowEnd: Instant, analysisProfile: Profile, night: String? = null): LearnResult =
+        aiLock.withLock { aiReview("nightly", now, lessons(now), windowEnd, analysisProfile, night) }
 
-    private suspend fun aiReview(mode: String, now: Instant, lessons: List<Lesson>, windowEnd: Instant, analysisProfile: Profile): LearnResult {
+    /**
+     * One AI review (1.4). Learning runs on [AppSettings.learnProvider]: Claude first (the default)
+     * sends it to Claude Opus at max effort as an Anthropic batch — no time limit, collected later by
+     * [pollReviews] — and falls back to Gemini Pro right away if the batch can't be sent; Gemini first
+     * runs it directly on Gemini Pro (Claude as the fallback).
+     */
+    private suspend fun aiReview(
+        mode: String,
+        now: Instant,
+        lessons: List<Lesson>,
+        windowEnd: Instant,
+        analysisProfile: Profile,
+        night: String? = null,
+    ): LearnResult {
         val current = profiles.current().profile
         val payload = payloads.build(analysisProfile, windowEnd, zone(), now, mode, learningContext(lessons, current, now))
-        var out = ai.call("learn_cycle", payload, null, "learn_cycle ($mode)", AiClient.LEARN_TIMEOUT_MS)
+        val pref = settings.current().learnProvider
+        settings.setMarker(KEY_LAST_AI, now.toEpochMilli().toString())
+        if ((pref == AiProviderPreference.CLAUDE_FIRST || pref == AiProviderPreference.CLAUDE_ONLY) && ai.reachable()) {
+            val sent = ai.call(
+                "learn_cycle", payload, null, "learn_cycle ($mode, batch)", AiClient.BATCH_TIMEOUT_MS,
+                preferenceWire = AiProviderPreference.CLAUDE_ONLY.wire, batch = buildJsonObject { put("mode", "submit") },
+            )
+            when (sent) {
+                is AiOutcome.Pending -> {
+                    addPending(PendingReview(sent.batchId, mode, now.toEpochMilli(), lessons.map { it.doseId }, night, sent.callId, sent.model))
+                    journal(
+                        "ai_review_sent", "AI review ($mode) sent to ${sent.model ?: "Claude"} (max effort) — results usually within an hour",
+                        buildJsonObject { put("batch_id", sent.batchId); put("mode", mode) }, aiCallId = sent.callId, now = now,
+                    )
+                    onWrite()
+                    return LearnResult(
+                        STATUS_SUBMITTED,
+                        "Claude is reviewing ${if (mode == "nightly") "last night's" else "the latest"} data at max effort — results usually within an hour.",
+                        at = now.toEpochMilli(),
+                    )
+                }
+                is AiOutcome.Ok -> return handleOutcome(mode, now, lessons.map { it.doseId }, sent)
+                is AiOutcome.Failed -> {
+                    journal("error", "AI review ($mode) couldn't be sent to Claude: ${sent.reason}", aiCallId = sent.callId, now = now)
+                    if (pref == AiProviderPreference.CLAUDE_ONLY) return handleOutcome(mode, now, lessons.map { it.doseId }, sent)
+                }
+            }
+        }
+        val out = direct(payload, mode, if (pref == AiProviderPreference.GEMINI_FIRST) pref.wire else AiProviderPreference.GEMINI_ONLY.wire)
+        return handleOutcome(mode, now, lessons.map { it.doseId }, out)
+    }
+
+    /** A review answered within the function's time limit (Gemini Pro; Claude at high effort as its fallback). */
+    private suspend fun direct(payload: JsonObject, mode: String, preferenceWire: String): AiOutcome {
+        var out = ai.call("learn_cycle", payload, null, "learn_cycle ($mode)", AiClient.LEARN_TIMEOUT_MS, preferenceWire = preferenceWire)
         if (out is AiOutcome.Failed && out.retryWith != null) {
             out = ai.call("learn_cycle", payload, null, "learn_cycle ($mode, retry ${out.retryWith})", AiClient.LEARN_TIMEOUT_MS, preferenceWire = out.retryWith)
         }
-        settings.setMarker(KEY_LAST_AI, now.toEpochMilli().toString())
-        val outcome = out
+        return out
+    }
+
+    /**
+     * Collects finished batch reviews (called every 15 min from housekeeping). Returns each review that
+     * finished, with its result; a review that failed, expired or ran over [MAX_BATCH_WAIT_MS] falls
+     * back to Gemini Pro so the night still gets a review.
+     */
+    suspend fun pollReviews(now: Instant = Instant.now()): List<Pair<PendingReview, LearnResult>> {
+        if (!ai.reachable()) return emptyList()
+        return aiLock.withLock {
+            val done = mutableListOf<Pair<PendingReview, LearnResult>>()
+            for (p in pendingReviews()) {
+                val out = ai.call(
+                    "learn_cycle", buildJsonObject { }, null, "learn_cycle (${p.mode}, batch result)", AiClient.BATCH_TIMEOUT_MS,
+                    preferenceWire = AiProviderPreference.CLAUDE_ONLY.wire, batch = buildJsonObject { put("mode", "poll"); put("id", p.batchId) },
+                )
+                val result = when (out) {
+                    is AiOutcome.Pending -> {
+                        if (now.toEpochMilli() - p.submittedAt < MAX_BATCH_WAIT_MS) continue
+                        journal("error", "AI review (${p.mode}) still running at Claude after ${MAX_BATCH_WAIT_MS / HOUR_MS} h — using Gemini Pro instead", now = now)
+                        fallback(p, now)
+                    }
+                    is AiOutcome.Ok -> handleOutcome(p.mode, now, p.lessonIds, out)
+                    is AiOutcome.Failed -> {
+                        journal("error", "AI review (${p.mode}) at Claude failed: ${out.reason} — using Gemini Pro instead", aiCallId = out.callId, now = now)
+                        fallback(p, now)
+                    }
+                }
+                removePending(p.batchId)
+                done += p to result
+            }
+            done
+        }
+    }
+
+    private suspend fun fallback(p: PendingReview, now: Instant): LearnResult {
+        if (settings.current().learnProvider == AiProviderPreference.CLAUDE_ONLY) {
+            return LearnResult("failed", "Claude's review didn't finish. The current profile carries on.", at = now.toEpochMilli())
+        }
+        val profile = profiles.current().profile
+        val lessons = lessons(now, profile)
+        val windowEnd = if (p.mode == "nightly") Instant.ofEpochMilli(p.submittedAt) else now
+        val payload = payloads.build(profile, windowEnd, zone(), now, p.mode, learningContext(lessons, profile, now))
+        return handleOutcome(p.mode, now, lessons.map { it.doseId }, direct(payload, p.mode, AiProviderPreference.GEMINI_ONLY.wire))
+    }
+
+    /** Reviews sent as batches and not collected yet. */
+    suspend fun pendingReviews(): List<PendingReview> =
+        settings.marker(KEY_PENDING)?.let { runCatching { AppJson.decodeFromString(ListSerializer(PendingReview.serializer()), it) }.getOrNull() }.orEmpty()
+
+    private suspend fun addPending(p: PendingReview) =
+        settings.setMarker(KEY_PENDING, AppJson.encodeToString(ListSerializer(PendingReview.serializer()), pendingReviews() + p))
+
+    private suspend fun removePending(batchId: String) {
+        val rest = pendingReviews().filterNot { it.batchId == batchId }
+        settings.setMarker(KEY_PENDING, if (rest.isEmpty()) null else AppJson.encodeToString(ListSerializer(PendingReview.serializer()), rest))
+    }
+
+    /** What a review answered: journaled, mapped to profile changes and applied as far as autonomy allows. */
+    private suspend fun handleOutcome(mode: String, now: Instant, lessonIds: List<String>, outcome: AiOutcome): LearnResult {
+        val current = profiles.current().profile
         val result = when (outcome) {
+            is AiOutcome.Pending -> LearnResult(STATUS_SUBMITTED, "Still running.", at = now.toEpochMilli())
             is AiOutcome.Failed -> {
                 journal("error", "AI review ($mode) failed: ${outcome.reason}", aiCallId = outcome.callId, now = now)
                 LearnResult("failed", "Learn cycle couldn't run (${outcome.reason}). The current profile carries on.", at = now.toEpochMilli())
@@ -255,12 +381,14 @@ class LearningEngine(
                     journal("error", "AI review ($mode) returned something unreadable", aiCallId = outcome.callId, now = now)
                     LearnResult("failed", "Learn cycle result couldn't be read. The current profile carries on.", at = now.toEpochMilli())
                 } else {
-                    settings.setMarker(KEY_AI_SEEN, lessons.joinToString(",") { it.doseId })
+                    settings.setMarker(KEY_AI_SEEN, lessonIds.joinToString(","))
                     val changes = LearnMapping.changes(dto, current)
                     journal(
-                        "ai_review", "AI review ($mode): ${dto.summary.ifBlank { "no summary" }}",
+                        "ai_review", "AI review ($mode, ${outcome.model}): ${dto.summary.ifBlank { "no summary" }}",
                         buildJsonObject {
                             put("mode", mode)
+                            put("provider", outcome.provider)
+                            put("model", outcome.model)
                             put("summary", dto.summary)
                             putJsonArray("observations") { dto.observations.forEach { add(JsonPrimitive(it)) } }
                             put("changes_proposed", changes.size)
@@ -567,6 +695,10 @@ class LearningEngine(
 
     companion object {
         private const val HOUR_MS = 3_600_000L
+        /** A batch review not back after this long is replaced by a direct Gemini Pro review. */
+        const val MAX_BATCH_WAIT_MS = 8 * HOUR_MS
+        const val STATUS_SUBMITTED = "submitted"
+        const val KEY_PENDING = "learning_pending_batches"
         private const val DAY_MS = 86_400_000L
         const val KEY_SEEN = "learning_seen_doses"
         const val KEY_AI_SEEN = "learning_ai_seen_doses"

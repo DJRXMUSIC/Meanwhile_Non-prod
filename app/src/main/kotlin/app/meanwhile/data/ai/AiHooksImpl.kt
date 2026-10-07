@@ -11,9 +11,12 @@ import app.meanwhile.data.json.isoOf
 import app.meanwhile.domain.profile.FactorKind
 import app.meanwhile.domain.profile.Profile
 import app.meanwhile.domain.profile.ProfileJson
+import app.meanwhile.data.input.AiCallInfo
+import app.meanwhile.domain.router.BgIntent
 import app.meanwhile.domain.router.DoseIntent
 import app.meanwhile.domain.router.FactorIntent
 import app.meanwhile.domain.router.FeedbackIntent
+import app.meanwhile.domain.router.FollowedIntent
 import app.meanwhile.domain.router.MealIntent
 import app.meanwhile.domain.router.OfflineRouter
 import app.meanwhile.domain.router.RouteResult
@@ -36,6 +39,8 @@ class AiHooksImpl(
 ) : AiHooks {
 
     override val online: Boolean get() = ai.reachable()
+
+    override fun lastCall(): AiCallInfo? = ai.lastCall
 
     private fun base(profile: Profile, now: Instant = Instant.now()) = mapOf(
         "now" to isoOf(now.toEpochMilli()),
@@ -67,7 +72,18 @@ class AiHooksImpl(
         val parsed = offline.route(span).intents
         return when (i.type) {
             "feedback" -> listOf(parsed.filterIsInstance<FeedbackIntent>().firstOrNull() ?: FeedbackIntent(full, offline.route(full).intents.filterIsInstance<FeedbackIntent>().firstOrNull()?.text ?: span, i.confidence))
-            "dose_given" -> listOf(parsed.filterIsInstance<DoseIntent>().firstOrNull()?.copy(confidence = i.confidence) ?: DoseIntent(span, 0.0, confidence = i.confidence))
+            "dose_given" -> listOf(
+                parsed.filterIsInstance<DoseIntent>().firstOrNull()?.copy(confidence = i.confidence)
+                    ?: parsed.filterIsInstance<FollowedIntent>().firstOrNull()?.copy(confidence = i.confidence)
+                    ?: DoseIntent(span, 0.0, confidence = i.confidence),
+            )
+            // 1.4: the numbers in a correction are read by code, never taken from the AI.
+            "dose_correction" -> listOf(offline.correctionFrom(span).copy(confidence = i.confidence))
+            "followed" -> listOf(parsed.filterIsInstance<FollowedIntent>().firstOrNull()?.copy(confidence = i.confidence) ?: FollowedIntent(span, confidence = i.confidence))
+            "bg_reading" -> listOfNotNull(
+                parsed.filterIsInstance<BgIntent>().firstOrNull()?.copy(confidence = i.confidence)
+                    ?: Regex("\\b(\\d{2,3})\\b").find(span)?.groupValues?.get(1)?.toDouble()?.takeIf { it in 20.0..600.0 }?.let { BgIntent(span, it, i.confidence) },
+            )
             "factor_update" -> parsed.filterIsInstance<FactorIntent>().map { it.copy(confidence = i.confidence) }
                 .ifEmpty { listOf(FactorIntent(span, factorId = "", confidence = i.confidence)) }
             else -> listOf(
@@ -142,7 +158,7 @@ class AiHooksImpl(
 
     private suspend fun recentContext(since: Long): JsonObject {
         val events = db.factorEvents().since(since)
-        val doses = db.doses().since(since)
+        val doses = db.doses().effectiveSince(since)
         val outcomes = db.outcomes().since(since)
         return buildRecent(events, doses, outcomes)
     }

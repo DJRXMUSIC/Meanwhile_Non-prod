@@ -1,5 +1,6 @@
 package app.meanwhile.sync
 
+import app.meanwhile.data.sync.LogUploader
 import app.meanwhile.data.sync.syncTables
 import app.meanwhile.testing.TestEnv
 import org.junit.After
@@ -25,20 +26,25 @@ class SyncContractTest {
     private val serverTables: Map<String, List<Column>> by lazy {
         val dir = listOf(File("../supabase/migrations"), File("supabase/migrations")).first { it.isDirectory }
         val sql = dir.listFiles()!!.filter { it.name.matches(Regex("\\d+_.*\\.sql")) }.sortedBy { it.name }.joinToString("\n") { it.readText() }
-        Regex("create table public\\.(\\w+) \\((.*?)\\n\\);", RegexOption.DOT_MATCHES_ALL).findAll(sql).associate { m ->
+        val tables = Regex("create table public\\.(\\w+) \\((.*?)\\n\\);", RegexOption.DOT_MATCHES_ALL).findAll(sql).associate { m ->
             m.groupValues[1] to m.groupValues[2].lines().map { it.trim().trimEnd(',') }
                 .filter { it.isNotEmpty() && !it.startsWith("--") }
-                .map { line ->
-                    val required = "not null" in line && "default" !in line && "generated" !in line && "primary key" !in line
-                    Column(line.substringBefore(' '), required)
-                }
+                .map { line -> Column(line.substringBefore(' '), required(line)) }
+        }.toMutableMap()
+        // Later migrations add columns: "alter table public.ai_calls add column request jsonb …;"
+        Regex("alter table public\\.(\\w+) add column (\\w+) ([^;]+);").findAll(sql).forEach { m ->
+            tables[m.groupValues[1]] = tables.getValue(m.groupValues[1]) + Column(m.groupValues[2], required(m.groupValues[3]))
         }
+        tables
     }
+
+    private fun required(definition: String) =
+        "not null" in definition && "default" !in definition && "generated" !in definition && "primary key" !in definition
 
     @Test
     fun `every synced table exists on the server with matching columns`() {
         val tables = syncTables(env.db)
-        assertEquals("server tables vs synced tables", serverTables.keys, tables.map { it.name }.toSet())
+        assertEquals("server tables vs synced tables", serverTables.keys - UPLOAD_ONLY, tables.map { it.name }.toSet())
         for (t in tables) {
             val server = serverTables.getValue(t.name)
             val serverNames = server.map { it.name }.toSet()
@@ -51,7 +57,23 @@ class SyncContractTest {
     }
 
     @Test
-    fun `learning journal is synced`() {
+    fun `learning journal and conversation are synced`() {
         assertTrue(syncTables(env.db).any { it.name == "learning_log" })
+        assertTrue(syncTables(env.db).any { it.name == "conversation_log" })
+    }
+
+    @Test
+    fun `app log rows match the server table`() {
+        val server = serverTables.getValue("app_logs")
+        val sent = LogUploader.columns
+        val missingOnServer = sent - server.map { it.name }.toSet()
+        assertTrue("app_logs: the uploader sends columns the server doesn't have: $missingOnServer", missingOnServer.isEmpty())
+        val notSent = server.filter { it.required }.map { it.name }.toSet() - sent.toSet()
+        assertTrue("app_logs: server requires columns the uploader never sends: $notSent", notSent.isEmpty())
+    }
+
+    private companion object {
+        /** Pushed but never pulled back (the phone's own log). */
+        val UPLOAD_ONLY = setOf("app_logs")
     }
 }

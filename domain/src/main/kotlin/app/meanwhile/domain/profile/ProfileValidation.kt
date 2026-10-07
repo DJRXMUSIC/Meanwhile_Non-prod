@@ -62,6 +62,13 @@ object ProfileValidation {
         if (l.aiMinNewLessons < 1) add("learning.aiMinNewLessons must be at least 1 (is ${l.aiMinNewLessons})")
         if (!l.aiMinHoursBetween.isFinite() || l.aiMinHoursBetween < 0) add("learning.aiMinHoursBetween can't be negative (is ${show(l.aiMinHoursBetween)})")
 
+        val n = p.nba
+        finite("nba.lowBelowMgDl", n.lowBelowMgDl)
+        if (!n.lowTreatCarbsG.isFinite() || n.lowTreatCarbsG < 0) add("nba.lowTreatCarbsG can't be negative (is ${show(n.lowTreatCarbsG)})")
+        if (n.recheckMin < 0) add("nba.recheckMin can't be negative (is ${n.recheckMin})")
+        if (n.predictMinutes < 0) add("nba.predictMinutes can't be negative (is ${n.predictMinutes})")
+        if (!n.minCarbsG.isFinite() || n.minCarbsG < 0) add("nba.minCarbsG can't be negative (is ${show(n.minCarbsG)})")
+
         val ids = p.factors.map { it.id }
         ids.groupingBy { it }.eachCount().filter { it.value > 1 }.keys.forEach { add("factor id $it is used more than once") }
         for (f in p.factors) {

@@ -30,17 +30,20 @@ import java.util.Locale
 class Diagnostics(private val c: AppContainer) {
 
     suspend fun report(now: Instant = Instant.now(), tailLines: Int = 300): String = withContext(Dispatchers.IO) {
+        val capture = captureStartedAt()
         val text = buildString {
             header(now)
+            capture?.let { captureNote(it, now) }
             appAndDevice(now)
             health(now)
-            problems(now)
+            problems(now, capture)
             crashes()
             aiFailures(now)
             learning(now)
+            conversation(capture ?: now.minus(Duration.ofHours(2)))
             database()
             markers()
-            logTail(tailLines)
+            if (capture != null) logSince(capture) else logTail(tailLines)
         }
         redact(text).let { if (it.length > MAX_CHARS) it.take(MAX_CHARS) + "\n\n… (truncated)\n" else it }
     }
@@ -64,6 +67,22 @@ class Diagnostics(private val c: AppContainer) {
         return Intent.createChooser(send, "Share diagnostics")
     }
 
+    /**
+     * Starts a fresh capture (1.4): from now on the report covers only what happens after this point —
+     * every log line and the whole conversation — so Danny can reproduce a bug and share just that.
+     */
+    suspend fun startCapture(now: Instant = Instant.now()) {
+        c.settings.setMarker(KEY_CAPTURE, now.toEpochMilli().toString())
+        AppLog.i("Capture", "=== capture started — reproduce the problem now ===")
+    }
+
+    suspend fun stopCapture() {
+        c.settings.setMarker(KEY_CAPTURE, null)
+        AppLog.i("Capture", "=== capture stopped ===")
+    }
+
+    suspend fun captureStartedAt(): Instant? = c.settings.marker(KEY_CAPTURE)?.toLongOrNull()?.let { Instant.ofEpochMilli(it) }
+
     /** Warnings and errors in the last [hours] (Settings badge). */
     fun problemCount(hours: Long = 24): Int {
         val since = Instant.now().minus(Duration.ofHours(hours))
@@ -85,6 +104,37 @@ class Diagnostics(private val c: AppContainer) {
         appendLine()
         appendLine("Generated ${now} (phone time zone ${ZoneId.systemDefault().id}).")
         appendLine()
+    }
+
+    private fun StringBuilder.captureNote(since: Instant, now: Instant) {
+        appendLine("## Capture")
+        appendLine("Danny started a capture at **$since** (${Duration.between(since, now).toMinutes()} min before this report) and then")
+        appendLine("reproduced the problem: everything below the health section covers only that window — every log line")
+        appendLine("and the conversation word for word. The same data is in Supabase (`app_logs`, `conversation_log`, `ai_calls`).")
+        appendLine()
+    }
+
+    /** The conversation word for word (messages, steps, answers, taps) since [since]. */
+    private suspend fun StringBuilder.conversation(since: Instant) {
+        val rows = c.db.conversation().since(since.toEpochMilli())
+        appendLine("## Conversation since $since (${rows.size} entries)")
+        if (rows.isEmpty()) {
+            appendLine("Nothing said or tapped in this window.")
+        } else {
+            appendLine("```")
+            rows.takeLast(400).forEach { r -> appendLine("${Instant.ofEpochMilli(r.recordedAt)} ${r.role}/${r.kind}: ${r.text.replace('\n', ' ')}") }
+            appendLine("```")
+        }
+        appendLine()
+    }
+
+    private fun StringBuilder.logSince(since: Instant) {
+        val entries = AppLog.entries().filter { !it.at.isBefore(since) }
+        val shown = entries.takeLast(3000)
+        appendLine("## Log since the capture started (${entries.size} entries${if (shown.size < entries.size) ", last ${shown.size} shown" else ""})")
+        appendLine("```")
+        shown.forEach { appendLine(it.toString()) }
+        appendLine("```")
     }
 
     private fun StringBuilder.appAndDevice(now: Instant) {
@@ -115,7 +165,8 @@ class Diagnostics(private val c: AppContainer) {
         appendLine("## Health")
         appendLine("- **Permissions:** notifications ${tick(setup.notifications)}, unrestricted battery ${tick(setup.batteryExempt)}, exact alarms ${tick(setup.exactAlarms)}, microphone ${tick(setup.microphone)}, Eversense notification access ${tick(setup.eversenseAccess)} (Eversense app ${if (setup.eversenseInstalled) "installed" else "not found"})")
         appendLine("- **Network:** ${if (c.network.online.value) "online" else "offline"}")
-        appendLine("- **CGM:** latest reading ${latest?.let { ago(it.timestamp.toEpochMilli()) } ?: "none"}; xDrip+ web " +
+        val webAt = c.settings.current().let { "${it.xdripBaseUrl}${it.xdripPath}" + if (it.customWebSource) " (custom)" else "" }
+        appendLine("- **CGM:** latest reading ${latest?.let { ago(it.timestamp.toEpochMilli()) } ?: "none"}; local web service $webAt " +
             when (feed.webOk) { true -> "ok"; false -> "failing (${feed.webMessage})"; null -> "not checked yet" } +
             "; last broadcast ${ago(feed.lastBroadcastAt)}; ${feed.lastBackCapture ?: "no back-fill yet"}")
         appendLine("- **Eversense (built-in interceptor):** last notification ${ago(feed.eversenseSeenAt)}, last reading saved ${ago(feed.eversenseSavedAt)}; " +
@@ -128,15 +179,17 @@ class Diagnostics(private val c: AppContainer) {
         }
         appendLine("- **Cloud sync:** $auth; last success ${ago(sync.lastSuccessAt)}; $pending pending, $rejected rejected" +
             (sync.failingSince?.let { "; failing since ${ago(it)}: ${sync.lastError}" } ?: ""))
-        appendLine("- **AI:** reachable ${tick(c.ai.reachable())}; preference ${c.settings.current().aiProvider.wire}; last ok ${ago(ai.lastOkAt)}" +
-            (ai.lastError?.let { "; last error ${ago(ai.lastErrorAt)}: $it" } ?: ""))
+        val pendingReviews = c.learning.pendingReviews()
+        appendLine("- **AI:** reachable ${tick(c.ai.reachable())}; day-to-day ${c.settings.current().aiProvider.wire}, learning ${c.settings.current().learnProvider.wire}; last ok ${ago(ai.lastOkAt)}" +
+            (ai.lastError?.let { "; last error ${ago(ai.lastErrorAt)}: $it" } ?: "") +
+            "; reviews running at Claude: " + (if (pendingReviews.isEmpty()) "none" else pendingReviews.joinToString { "${it.mode} sent ${ago(it.submittedAt)}" }))
         appendLine("- **Profile:** ${profile.versionLabel}" + (profile.version?.let { " (${it.source}, ${ago(it.createdAt)})" } ?: "") +
             if (problems.isEmpty()) "; valid" else "; **INVALID:** ${problems.joinToString("; ")}")
         appendLine()
     }
 
-    private fun StringBuilder.problems(now: Instant) {
-        val since = now.minus(Duration.ofHours(72))
+    private fun StringBuilder.problems(now: Instant, capture: Instant? = null) {
+        val since = capture ?: now.minus(Duration.ofHours(72))
         val list = AppLog.entries().filter { it.isProblem && it.at.isAfter(since) }
         appendLine("## Problems in the last 72 h (${list.size} warnings/errors)")
         if (list.isEmpty()) {
@@ -226,7 +279,7 @@ class Diagnostics(private val c: AppContainer) {
 
     private suspend fun StringBuilder.markers() {
         appendLine("## Background markers")
-        for (k in listOf(NightlyJobs.KEY_LEARN_DONE, NightlyJobs.KEY_F11_DONE, NightlyJobs.KEY_MORNING_SEEN)) {
+        for (k in listOf(NightlyJobs.KEY_LEARN_DONE, NightlyJobs.KEY_F11_DONE, NightlyJobs.KEY_MORNING_SEEN, KEY_CAPTURE)) {
             appendLine("- $k: ${c.settings.marker(k) ?: "—"}")
         }
         appendLine()
@@ -245,8 +298,11 @@ class Diagnostics(private val c: AppContainer) {
 
         val SYNCED_TABLES = listOf(
             "cgm_readings", "meals", "factor_events", "doses", "proposals", "outcomes", "profile_versions",
-            "factor_definitions", "ai_calls", "feedback", "inputs", "learning_log",
+            "factor_definitions", "ai_calls", "feedback", "inputs", "learning_log", "conversation_log",
         )
+
+        /** When the current bug capture started (epoch ms). */
+        const val KEY_CAPTURE = "diagnostics_capture_since"
 
         private fun tick(ok: Boolean) = if (ok) "✓" else "✗"
 

@@ -104,9 +104,9 @@ fun MorningReportScreen(onDone: () -> Unit) {
         val from = y.atStartOfDay(zone).toInstant()
         val to = d.atStartOfDay(zone).toInstant()
         val readings = c.db.cgm().between(from.toEpochMilli(), to.toEpochMilli()).map { it.toDomain() }
-        val doses = c.db.doses().between(from.toEpochMilli(), to.toEpochMilli() - 1)
+        val doses = c.db.doses().effectiveBetween(from.toEpochMilli(), to.toEpochMilli() - 1)
         val proposals = c.db.proposals().between(from.toEpochMilli(), to.toEpochMilli() - 1)
-        val byProposal = c.db.doses().since(from.toEpochMilli()).filter { it.proposalId != null }.groupBy { it.proposalId!! }
+        val byProposal = c.db.doses().effectiveSince(from.toEpochMilli()).filter { it.proposalId != null }.groupBy { it.proposalId!! }
         val states = proposals.map { ProposalFollow.classify(it.finalUnits, byProposal[it.id].orEmpty()) }
         glance = Glance(
             GlucoseStats.summarize(readings, from, to),
@@ -153,6 +153,21 @@ fun MorningReportScreen(onDone: () -> Unit) {
                     Text("Running last night's learn cycle… (up to 2 min)")
                 }
                 learn == null -> Text("The learn cycle hasn't run yet.")
+                learn?.status == app.meanwhile.data.learn.LearningEngine.STATUS_SUBMITTED -> {
+                    Text(learn?.message ?: "", color = ai)
+                    Text("You'll get a notification when the review is back.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            running = true
+                            try {
+                                c.nightly.collectReviews()
+                            } finally {
+                                running = false
+                                reload++
+                            }
+                        }
+                    }) { Text("Check now") }
+                }
                 learn?.status == "failed" -> {
                     Text(learn?.message ?: "", color = MaterialTheme.colorScheme.error)
                     OutlinedButton(onClick = {

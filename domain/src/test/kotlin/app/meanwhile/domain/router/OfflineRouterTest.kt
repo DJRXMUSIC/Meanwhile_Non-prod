@@ -130,4 +130,94 @@ class OfflineRouterTest {
         val coffee = router.route("two coffees").intents.filterIsInstance<FactorIntent>().single()
         assertEquals("F4", coffee.factorId)
     }
+
+    // --- 1.4: talking to it like a person -------------------------------------------------------
+
+    private fun correction(s: String) = assertIs<DoseCorrectionIntent>(route(s).single(), s)
+
+    @Test
+    fun `corrections with a new amount`() {
+        assertEquals(5.0, correction("never mind I only took 5").units)
+        assertEquals(5.0, correction("nevermind, I only took five units").units)
+        assertEquals(4.0, correction("make that 4").units)
+        assertEquals(5.0, correction("actually 5").units)
+        assertEquals(4.0, correction("no, 4").units)
+        assertEquals(5.0, correction("I took 5 not 6").units)
+        assertEquals(5.0, correction("I took 6 earlier, actually only 5").units)
+        assertEquals(5.0, correction("sorry it was 5 units").units)
+        assertEquals(5.0, correction("I didn't take 6, I took 5").units)
+        assertEquals(3.5, correction("I meant three and a half").units)
+    }
+
+    @Test
+    fun `corrections that cancel the dose`() {
+        listOf("I didn't take any", "never mind I didn't take it", "cancel that", "scratch that", "undo that",
+            "I never took it", "I haven't taken it", "never mind").forEach {
+            assertEquals(0.0, correction(it).units, it)
+        }
+        val long = correction("I didn't take my long acting")
+        assertEquals(0.0, long.units)
+        assertEquals("long", long.insulin)
+    }
+
+    @Test
+    fun `a correction can move the time`() {
+        val c = correction("actually it was 5 units 20 minutes ago")
+        assertEquals(5.0, c.units)
+        assertEquals(20, c.minutesAgo)
+        val t = correction("sorry I took it 15 minutes ago")
+        assertNull(t.units)
+        assertEquals(15, t.minutesAgo)
+    }
+
+    @Test
+    fun `things that are not dose corrections`() {
+        assertEquals(listOf("meal"), route("actually it was 60 carbs").map { it.type })
+        assertEquals(listOf("factor_update"), route("actually 2 beers").map { it.type })
+        assertEquals(listOf("factor_update"), route("actually I also had a coffee").map { it.type })
+        assertEquals(listOf("factor_update"), route("didn't sleep well").map { it.type })
+        assertEquals(listOf("dose_given"), route("took 6 units").map { it.type })
+        assertEquals(listOf("meal"), route("what should I take").map { it.type })
+    }
+
+    @Test
+    fun `the AI's correction spans are read without trigger words`() {
+        assertEquals(5.0, router.correctionFrom("only 5").units)
+        assertEquals(0.0, router.correctionFrom("didn't take it").units)
+        assertEquals(5.0, router.correctionFrom("five").units)
+    }
+
+    @Test
+    fun `took it means the last suggestion was followed`() {
+        listOf("took it", "ok took it", "I took it", "did it", "done", "all done", "ate it", "I took the dose", "ok done!").forEach {
+            assertIs<FollowedIntent>(route(it).single(), it)
+        }
+        assertEquals(10, assertIs<FollowedIntent>(route("took it 10 minutes ago").single()).minutesAgo)
+        // "done" inside a longer sentence is not a confirmation.
+        assertTrue(route("done with my run").none { it is FollowedIntent })
+        assertEquals(6.0, assertIs<DoseIntent>(route("took the 6").single()).units)
+    }
+
+    @Test
+    fun `a spoken BG is used for this message`() {
+        assertEquals(140.0, assertIs<BgIntent>(route("BG 140").single()).mgDl)
+        assertEquals(85.0, assertIs<BgIntent>(route("my blood sugar is 85").single()).mgDl)
+        assertEquals(210.0, assertIs<BgIntent>(route("I'm at 210").single()).mgDl)
+        val withMeal = route("bg 180 and 45 carbs")
+        assertEquals(listOf("bg_reading", "meal"), withMeal.map { it.type })
+        assertEquals(45.0, (withMeal[1] as MealIntent).carbsG)
+        val question = route("sugar's 250 what should I do")
+        assertEquals(listOf("bg_reading", "meal"), question.map { it.type })
+        assertEquals(OfflineRouter.CHECK_DESCRIPTION, (question[1] as MealIntent).description)
+    }
+
+    @Test
+    fun `asking what to do is a Next Best Action with no food`() {
+        listOf("what should I do", "what should I take?", "correction", "should I eat something", "check", "do I need insulin").forEach {
+            val m = assertIs<MealIntent>(route(it).single(), it)
+            assertEquals(OfflineRouter.CHECK_DESCRIPTION, m.description, it)
+        }
+        val food = assertIs<MealIntent>(route("should I take insulin for a sandwich").single())
+        assertEquals("sandwich", food.description)
+    }
 }

@@ -9,6 +9,10 @@ import app.meanwhile.data.ai.AiClient
 import app.meanwhile.data.cgm.CgmRepository
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.data.dose.DoseContextBuilder
+import app.meanwhile.data.input.AiHooks
+import app.meanwhile.data.input.ConversationLog
+import app.meanwhile.data.input.FactorUpdater
+import app.meanwhile.data.input.InputProcessor
 import app.meanwhile.data.input.MealDraft
 import app.meanwhile.data.input.NbaService
 import app.meanwhile.data.learn.LearningEngine
@@ -56,6 +60,11 @@ class TestEnv : Closeable {
         scheduleSecond = { id, units, due -> scheduled += Triple(id, units, due) },
         cancelSecond = { cancelled += it },
     )
+    val factorUpdater = FactorUpdater(db, records, profiles, onWrite)
+    val conversation = ConversationLog(db, records, onWrite)
+    /** The AI layer the processor sees; offline unless a test swaps in a fake. */
+    var aiHooks: AiHooks = object : AiHooks {}
+    val inputs = InputProcessor(db, records, profiles, factorUpdater, nba, onWrite, conversation) { aiHooks }
     val network = NetworkMonitor(context)
     val ai = AiClient(null, db, records, auth, settings, network, onWrite)
     val learning = LearningEngine(context, db, records, profiles, ai, settings, onWrite, zone = { ZONE })

@@ -76,3 +76,44 @@ data class FeedbackIntent(
 ) : RoutedIntent {
     override val type: String get() = "feedback"
 }
+
+/**
+ * Danny corrects or cancels a dose he already logged (1.4): "never mind, I only took 5",
+ * "I didn't take any", "make that 4", "cancel that". Applied as a new dose row that supersedes the
+ * old one — nothing is edited or deleted.
+ */
+@Serializable
+@SerialName("dose_correction")
+data class DoseCorrectionIntent(
+    override val textSpan: String,
+    /** The corrected units; 0 = he didn't take it; null = only the time changes. */
+    val units: Double?,
+    /** rapid | long — which dose; null = the most recent one. */
+    val insulin: String? = null,
+    val minutesAgo: Int? = null,
+    override val confidence: Double = 1.0,
+) : RoutedIntent {
+    override val type: String get() = "dose_correction"
+}
+
+/** "took it", "done", "ate it": Danny did what the last Next Best Action said (1.4). */
+@Serializable
+@SerialName("followed")
+data class FollowedIntent(
+    override val textSpan: String,
+    val minutesAgo: Int? = null,
+    override val confidence: Double = 1.0,
+) : RoutedIntent {
+    override val type: String get() = "followed"
+}
+
+/** "BG 140", "I'm at 85": a BG to use for this message's Next Best Action instead of the CGM. */
+@Serializable
+@SerialName("bg_reading")
+data class BgIntent(
+    override val textSpan: String,
+    val mgDl: Double,
+    override val confidence: Double = 1.0,
+) : RoutedIntent {
+    override val type: String get() = "bg_reading"
+}

@@ -48,6 +48,9 @@ sealed interface AiOutcome {
     ) : AiOutcome
 
     data class Failed(val reason: String, val callId: String?, val retryWith: String? = null) : AiOutcome
+
+    /** A learn-cycle batch accepted or still running at Anthropic (1.4); poll again later. */
+    data class Pending(val batchId: String, val status: String, val model: String?, val callId: String?) : AiOutcome
 }
 
 /**
@@ -66,6 +69,11 @@ class AiClient(
     private val _status = MutableStateFlow(AiStatus(configured = client != null))
     val status: StateFlow<AiStatus> = _status
 
+    /** The most recent call's provider, model and timing — shown on the message's progress line. */
+    @Volatile
+    var lastCall: app.meanwhile.data.input.AiCallInfo? = null
+        private set
+
     /** Usable right now: configured, signed in with a live session, network up. */
     fun reachable(): Boolean = client != null && network.online.value && auth.currentUserId() != null
 
@@ -77,6 +85,8 @@ class AiClient(
         timeoutMs: Long,
         preference: AiProviderPreference? = null,
         preferenceWire: String? = null,
+        /** Learn-cycle batches (1.4): {"mode": "submit"} or {"mode": "poll", "id": …}. */
+        batch: JsonObject? = null,
     ): AiOutcome {
         val c = client ?: return AiOutcome.Failed("AI not configured", null)
         if (!network.online.value) return AiOutcome.Failed("offline", null)
@@ -87,15 +97,17 @@ class AiClient(
             put("job", job)
             put("payload", payload)
             put("provider_preference", pref)
+            batch?.let { put("batch", it) }
         }
+        // timeoutMs is the whole wait: the function tries each provider within it (fast jobs ~45 s).
         val (envelope, httpError) = try {
-            val text = withTimeout(timeoutMs + 15_000) {
+            val text = withTimeout(timeoutMs + 5_000) {
                 c.functions.invoke("ai") {
                     contentType(ContentType.Application.Json)
                     setBody(body.toString())
                     timeout {
-                        requestTimeoutMillis = timeoutMs + 10_000
-                        socketTimeoutMillis = timeoutMs + 10_000
+                        requestTimeoutMillis = timeoutMs + 3_000
+                        socketTimeoutMillis = timeoutMs + 3_000
                     }
                 }.bodyAsText()
             }
@@ -104,13 +116,33 @@ class AiClient(
             // Non-2xx: the body (with per-provider attempts) is in `error`.
             (runCatching { parse(e.error) }.getOrNull()) to "HTTP ${e.response.status.value}"
         } catch (e: TimeoutCancellationException) {
-            null to "timed out after ${timeoutMs + 15_000} ms"
+            null to "timed out after ${timeoutMs + 5_000} ms"
         } catch (e: CancellationException) {
-            throw e // the caller went away (screen closed, worker stopped): don't log a failure
+            throw e // the caller went away (screen closed, worker stopped, Skip AI tapped): don't log a failure
         } catch (e: Exception) {
             null to (e.message ?: e::class.java.simpleName)
         }
         val latency = System.currentTimeMillis() - started
+        val batchInfo = envelope?.batch
+        if (envelope != null && batchInfo != null && envelope.result == null && envelope.error == null && httpError == null) {
+            // A batch was accepted ("submitted") or is still running ("processing"): only the submit is a call worth a row.
+            var callId: String? = null
+            if (batchInfo.status == "submitted") {
+                val m = records.meta(now = started)
+                callId = m.id
+                db.aiCalls().insert(
+                    AiCallEntity(
+                        id = m.id, userId = m.userId, createdAt = m.createdAt, recordedAt = m.recordedAt, job = job,
+                        provider = envelope.provider ?: "claude", model = batchInfo.model ?: envelope.model, latencyMs = latency,
+                        requestSummary = summary.take(500), response = AppJson.encodeToString(AiEnvelope.serializer(), envelope),
+                        validation = "submitted", inputId = inputId, request = body.toString(),
+                    ),
+                )
+                onWrite()
+                AppLog.i("AI", "$job batch ${batchInfo.id} submitted (${batchInfo.model ?: envelope.model})")
+            }
+            return AiOutcome.Pending(batchInfo.id, batchInfo.status, batchInfo.model ?: envelope.model, callId)
+        }
         val ok = envelope?.result != null && envelope.provider != null
         val error = if (ok) null else listOfNotNull(httpError, envelope?.error, envelope?.attempts?.joinToString("; ") { "${it.provider}: ${it.error}" })
             .joinToString(" · ").ifBlank { "unknown error" }
@@ -133,13 +165,20 @@ class AiClient(
                     put("result", envelope?.result ?: JsonNull)
                     put("attempts", AppJson.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(AiAttempt.serializer()), envelope?.attempts ?: emptyList()))
                     put("preference", pref)
+                    envelope?.batch?.let { put("batch", AppJson.encodeToJsonElement(AiBatch.serializer(), it)) }
                 }.toString(),
                 validation = validation,
                 error = error,
                 inputId = inputId,
+                request = body.toString(),
             ),
         )
         onWrite()
+        lastCall = app.meanwhile.data.input.AiCallInfo(
+            provider = envelope?.provider ?: envelope?.attempts?.lastOrNull()?.provider,
+            model = envelope?.model ?: envelope?.attempts?.lastOrNull()?.model,
+            latencyMs = latency, fallbackUsed = envelope?.fallbackUsed ?: false, error = error,
+        )
         if (ok) {
             AppLog.i("AI", "$job ok · ${envelope.provider}/${envelope.model} · ${latency} ms" + if (envelope.fallbackUsed) " (fallback)" else "")
         } else {
@@ -157,8 +196,14 @@ class AiClient(
     private fun parse(text: String): AiEnvelope = AppJson.decodeFromString(AiEnvelope.serializer(), text)
 
     companion object {
-        const val FAST_TIMEOUT_MS = 15_000L
+        /**
+         * Jobs Danny waits on: the function gives each provider 20 s and the pair 45 s (1.4: up from
+         * 15 s, with every step shown on screen and a Skip button, so a slow answer is never a mystery).
+         */
+        const val FAST_TIMEOUT_MS = 45_000L
         const val LEARN_TIMEOUT_MS = 140_000L
+        /** Submitting or polling a learn batch is quick; the review itself runs at Anthropic. */
+        const val BATCH_TIMEOUT_MS = 30_000L
 
         fun str(value: String?): JsonElement = value?.let { JsonPrimitive(it) } ?: JsonNull
     }

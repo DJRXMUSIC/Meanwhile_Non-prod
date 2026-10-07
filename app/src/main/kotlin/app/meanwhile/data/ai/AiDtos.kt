@@ -21,6 +21,17 @@ data class AiEnvelope(
     val attempts: List<AiAttempt> = emptyList(),
     val error: String? = null,
     @SerialName("retry_with") val retryWith: String? = null,
+    /** Learn-cycle batch state (1.4); result is null until it ends. */
+    val batch: AiBatch? = null,
+)
+
+@Serializable
+data class AiBatch(
+    val id: String,
+    /** submitted | processing | ended */
+    val status: String,
+    val model: String? = null,
+    val error: String? = null,
 )
 
 @Serializable

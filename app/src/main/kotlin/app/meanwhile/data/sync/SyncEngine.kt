@@ -37,6 +37,7 @@ class SyncEngine(
     private val settings: SettingsStore,
 ) {
     private val tables = syncTables(db)
+    private val logs = LogUploader(settings)
     private val mutex = Mutex()
 
     val tableNames: List<String> get() = tables.map { it.name }
@@ -48,6 +49,13 @@ class SyncEngine(
         try {
             for (t in tables) push(c, t, uid)
             for (t in tables) pull(c, t)
+            // The phone's own log (1.4): best effort — a log upload problem never fails the sync.
+            try {
+                logs.upload(c, uid)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (AppLog.throttle("log-upload", 60 * 60_000L)) AppLog.w(TAG, "app log upload failed: ${e.message}")
+            }
             if (settings.syncStatus.first().failingSince != null) AppLog.i(TAG, "sync recovered")
             AppLog.clearThrottle("sync-failing")
             settings.recordSyncSuccess(System.currentTimeMillis())

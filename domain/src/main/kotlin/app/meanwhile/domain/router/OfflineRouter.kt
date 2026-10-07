@@ -15,11 +15,15 @@ class OfflineRouter(private val factors: List<FactorDefinition>) {
         val lower = SpokenNumbers.normalize(text.lowercase())
 
         feedback(text, lower)?.let { return RouteResult(listOf(it), ROUTER) }
+        // "never mind, I only took 5" / "I didn't take any": a correction is the whole message.
+        correction(lower)?.let { return RouteResult(listOf(it), ROUTER) }
 
         val consumed = mutableListOf<IntRange>()
         val intents = mutableListOf<RoutedIntent>()
 
-        dose(lower, consumed)?.let { intents += it }
+        bg(lower, consumed)?.let { intents += it }
+        val dose = dose(lower, consumed)
+        if (dose != null) intents += dose else followed(lower, consumed)?.let { intents += it }
         val macros = macros(lower, consumed)
         intents += factorIntents(lower, consumed)
 
@@ -29,11 +33,17 @@ class OfflineRouter(private val factors: List<FactorDefinition>) {
         } else {
             val rest = leftover(lower, consumed)
             val mealCue = MEAL_CUES.any { Regex("\\b$it\\b").containsMatchIn(lower) }
-            if (rest.isNotBlank() && (mealCue || intents.none { it is DoseIntent })) {
-                intents += MealIntent(
-                    textSpan = rest, description = rest, liquidOrSugary = liquid,
-                    confidence = if (mealCue) 0.8 else if (intents.isEmpty()) 0.5 else 0.6,
-                )
+            val asking = CHECK.containsMatchIn(lower)
+            // In a question ("should I take insulin for a sandwich?") only the food is the meal.
+            val food = if (asking) rest.split(' ').filter { it.isNotBlank() && it !in QUESTION_WORDS }.joinToString(" ") else rest
+            when {
+                // "what should I do?", "correction", "BG 140 — anything?": a Next Best Action with no food.
+                asking && food.isBlank() -> intents += MealIntent(textSpan = text, description = CHECK_DESCRIPTION, confidence = 0.9)
+                food.isNotBlank() && (mealCue || intents.none { it is DoseIntent || it is FollowedIntent || it is BgIntent }) ->
+                    intents += MealIntent(
+                        textSpan = food, description = food, liquidOrSugary = liquid,
+                        confidence = if (mealCue) 0.8 else if (intents.isEmpty()) 0.5 else 0.6,
+                    )
             }
         }
         if (intents.isEmpty()) {
@@ -58,6 +68,7 @@ class OfflineRouter(private val factors: List<FactorDefinition>) {
             Regex("\\b(?:took|take|taken|gave|give|injected|inject|bolused|bolus|dosed|did|shot)\\b[^0-9]{0,25}?($NUM)\\s*(?:u|units?)\\b(?:\\s*(?:of\\s+)?(?:my\\s+)?(?:humalog|rapid|insulin|long[- ]?acting|basal|lantus|tresiba|levemir|toujeo|basaglar|semglee))?"),
             Regex("\\b(?:humalog|lyumjev|novolog|fiasp|admelog|apidra)\\s*($NUM)\\s*(?:u|units?)?\\b"),
             Regex("\\b(?:took|injected|bolused|dosed)\\s+($NUM)\\s*$"),
+            Regex("\\btook\\s+the\\s+($NUM)\\b(?!\\s*(?:g\\b|grams?|carbs?|min|minutes?|hours?|hrs?))"),
             Regex("\\b($NUM)\\s*(?:u|units?)\\b"),
         )
         for (re in patterns) {
@@ -70,6 +81,84 @@ class OfflineRouter(private val factors: List<FactorDefinition>) {
             return DoseIntent(textSpan = m.value.trim(), units = units, insulin = if (isLong) "long" else "rapid", minutesAgo = ago)
         }
         return null
+    }
+
+    /**
+     * A correction of a dose logged a moment ago (1.4). Only clear corrections count: a cancel ("I
+     * didn't take any", "scratch that"), or a trigger word with the new number ("never mind, only 5",
+     * "make that 4", "no, 5"). Food numbers ("actually it was 60 carbs") are a new meal, not this.
+     */
+    fun correction(lowerNormalized: String): DoseCorrectionIntent? {
+        val lower = lowerNormalized.trim()
+        if (QUESTION.containsMatchIn(lower) || MACRO_WORD.containsMatchIn(lower)) return null
+        val insulin = when {
+            LONG_WORD.containsMatchIn(lower) -> "long"
+            RAPID_WORD.containsMatchIn(lower) -> "rapid"
+            else -> null
+        }
+        val consumed = mutableListOf<IntRange>()
+        val ago = minutesAgo(lower, consumed)
+        val negated = NEGATED_DOSE.find(lower)
+        // Numbers that are units: not "not 6", not "didn't take 6", not minutes or food counts.
+        val numbers = UNIT_NUMBER.findAll(lower)
+            .filter { m -> consumed.none { r -> m.range.first in r } }
+            .filter { m -> negated == null || m.range.first !in negated.range.last..(negated.range.last + 3) }
+            .toList()
+        if (negated != null) {
+            val after = numbers.firstOrNull { it.range.first > negated.range.last }
+            return DoseCorrectionIntent(lower, units = after?.let { parseNumber(it.groupValues[1]) } ?: 0.0, insulin = insulin, minutesAgo = ago)
+        }
+        val trigger = CORRECTION_TRIGGER.find(lower) ?: return null
+        val number = numbers.firstOrNull { it.range.first >= trigger.range.first } ?: numbers.firstOrNull()
+        if (number == null) {
+            return when {
+                CANCEL.containsMatchIn(lower) -> DoseCorrectionIntent(lower, units = 0.0, insulin = insulin)
+                ago != null && DOSE_WORD.containsMatchIn(lower) -> DoseCorrectionIntent(lower, units = null, insulin = insulin, minutesAgo = ago)
+                else -> null
+            }
+        }
+        val words = lower.split(Regex("[^a-z0-9.']+")).filter { it.isNotBlank() }
+        val clear = DOSE_WORD.containsMatchIn(lower) || STRONG_TRIGGER.containsMatchIn(lower) ||
+            (words.size <= 3 && words.last() == number.groupValues[1])
+        if (!clear) return null
+        return DoseCorrectionIntent(lower, units = parseNumber(number.groupValues[1]), insulin = insulin, minutesAgo = ago)
+    }
+
+    /**
+     * The AI decided [span] corrects a dose: read it the same way, without needing a trigger word —
+     * the first units number, else a cancel.
+     */
+    fun correctionFrom(span: String): DoseCorrectionIntent {
+        val lower = SpokenNumbers.normalize(span.lowercase()).trim()
+        correction(lower)?.let { return it }
+        val consumed = mutableListOf<IntRange>()
+        val ago = minutesAgo(lower, consumed)
+        val number = UNIT_NUMBER.findAll(lower).firstOrNull { m -> consumed.none { r -> m.range.first in r } }
+        val insulin = when {
+            LONG_WORD.containsMatchIn(lower) -> "long"
+            RAPID_WORD.containsMatchIn(lower) -> "rapid"
+            else -> null
+        }
+        return DoseCorrectionIntent(
+            span, units = number?.let { parseNumber(it.groupValues[1]) } ?: if (ago != null) null else 0.0,
+            insulin = insulin, minutesAgo = ago,
+        )
+    }
+
+    /** "took it", "did it", "ate it", or just "done": Danny did what the last suggestion said. */
+    private fun followed(lower: String, consumed: MutableList<IntRange>): FollowedIntent? {
+        val m = FOLLOWED.find(lower) ?: FOLLOWED_ALONE.find(lower) ?: return null
+        consumed += m.range
+        return FollowedIntent(m.value.trim(), minutesAgo(lower, consumed))
+    }
+
+    /** "BG 140", "blood sugar is 85", "I'm at 210": a BG for this message's Next Best Action. */
+    private fun bg(lower: String, consumed: MutableList<IntRange>): BgIntent? {
+        val m = BG.find(lower) ?: return null
+        val value = parseNumber(m.groupValues[1].ifEmpty { m.groupValues[2] }) ?: return null
+        if (value < 20 || value > 600) return null
+        consumed += m.range
+        return BgIntent(m.value.trim(), value)
     }
 
     private fun macros(lower: String, consumed: MutableList<IntRange>): MealIntent? {
@@ -190,8 +279,55 @@ class OfflineRouter(private val factors: List<FactorDefinition>) {
     companion object {
         const val ROUTER = "offline"
         private const val NUM = "\\d+(?:\\.\\d+)?"
-        private val ORDER = listOf("feedback", "dose_given", "factor_update", "meal")
+        private val ORDER = listOf("feedback", "dose_correction", "dose_given", "followed", "bg_reading", "factor_update", "meal")
         val FEEDBACK_PREFIXES = listOf("feedback", "app note", "idea", "bug")
+
+        /** A Next Best Action request with no food: the processor checks for this description. */
+        const val CHECK_DESCRIPTION = "correction"
+        private val CHECK = Regex(
+            "\\b(what should i (?:do|take|eat)|what do i (?:do|take|need)|should i (?:take|eat|bolus|correct|do|dose)|do i need|" +
+                "how much (?:should|do) i|correction|correct|check|nba|dose check|next best action|what now|anything to do)\\b",
+        )
+        private val QUESTION_WORDS = setOf(
+            "what", "should", "how", "much", "need", "do", "does", "take", "eat", "bolus", "correct", "correction", "check",
+            "nba", "dose", "next", "best", "action", "now", "anything", "something", "insulin", "i", "me", "to", "for", "it",
+            "a", "any", "my", "is", "there", "can", "would", "you", "please", "ok", "okay", "so", "and", "then",
+        )
+        private val QUESTION = Regex("\\b(should i|what should|how much|do i need|what do i|can i)\\b")
+        private val NEGATED_DOSE = Regex(
+            "\\b(?:didn'?t|did not|never|haven'?t|have not|forgot to|not)\\s+(?:actually\\s+|really\\s+|end up\\s+|get to\\s+|even\\s+)?" +
+                "(?:take|took|taken|taking|inject|injected|bolus|bolused|dose|dosed|give|gave)\\b",
+        )
+        private val CORRECTION_TRIGGER = Regex(
+            "\\b(never ?mind|nvm|actually|sorry|oops|wait|scratch that|cancel|undo|i meant|meant|make (?:that|it)|change (?:that|it)|" +
+                "it was|that was|only took|i only|instead)\\b|^(?:no|nope)\\b|\\b\\d+(?:\\.\\d+)?\\s*(?:u|units?)?\\s*,?\\s*not\\s+\\d",
+        )
+        private val STRONG_TRIGGER = Regex("\\b(never ?mind|nvm|make (?:that|it)|i meant|change (?:that|it)|only took|scratch that|instead)\\b")
+        private val CANCEL = Regex(
+            "\\b(never ?mind|nvm|scratch that|cancel(?: that| it| the dose)?|undo(?: that| it)?|forget (?:that|it)|ignore (?:that|it)|" +
+                "delete (?:that|it)|remove (?:that|it))\\b",
+        )
+        private val DOSE_WORD = Regex(
+            "\\b(took|take|taken|inject(?:ed)?|bolus(?:ed)?|dose[ds]?|shot|units?|insulin|humalog|lyumjev|novolog|fiasp|lantus|" +
+                "tresiba|levemir|toujeo|basaglar|semglee|long[- ]?acting|basal)\\b",
+        )
+        private val MACRO_WORD = Regex("\\b(carbs?|carbohydrates?|fats?|proteins?|grams?)\\b|\\d\\s*g\\b")
+        private val LONG_WORD = Regex("\\b(long[- ]?acting|basal|lantus|tresiba|levemir|toujeo|basaglar|semglee)\\b")
+        private val RAPID_WORD = Regex("\\b(humalog|lyumjev|novolog|fiasp|admelog|apidra|rapid|bolus)\\b")
+        private val UNIT_NUMBER = Regex(
+            "(?<!not )(?<![\\d.])(\\d+(?:\\.\\d+)?)(?![\\d.])(?!\\s*(?:min|mins|minutes?|hours?|hrs?|h\\b|g\\b|grams?|carbs?|mg|%|am\\b|pm\\b|" +
+                "o'?clock|beers?|coffees?|drinks?|cups?|glass|miles?|km))",
+        )
+        private val FOLLOWED = Regex(
+            "\\b(?:just\\s+)?(?:took|did|injected|bolused|dosed|gave|ate|had|followed|finished|logged)\\s+" +
+                "(?:it|that|them|this|those|the\\s+(?:dose|insulin|shot|carbs|snack|correction|bolus|units?|juice|glucose))\\b",
+        )
+        private val FOLLOWED_ALONE = Regex("^(?:ok(?:ay)?|yes|yep|yeah|alright|sure|cool)?[\\s,.!]*(?:done|all done|did it|finished)[\\s.!]*$")
+        private val BG = Regex(
+            "\\b(?:bg|blood sugar|blood glucose|glucose|sugar|fingerstick|finger stick|meter|reading|cgm)(?:'s)?\\s*" +
+                "(?:is|was|of|at|reads|says|shows|:|=)?\\s*(?:at\\s+)?(\\d{2,3})\\b(?!\\s*(?:u\\b|units?|g\\b|grams?|carbs?|min|minutes?))" +
+                "|\\bi'?m\\s+(?:at|sitting at|reading)\\s+(\\d{2,3})\\b",
+        )
         private val NUMBER_WORDS = mapOf(
             "a" to 1.0, "an" to 1.0, "one" to 1.0, "two" to 2.0, "three" to 3.0, "four" to 4.0, "five" to 5.0,
             "six" to 6.0, "couple" to 2.0, "a couple" to 2.0, "double" to 2.0,
@@ -215,6 +351,7 @@ class OfflineRouter(private val factors: List<FactorDefinition>) {
             "back", "home", "work", "came", "kind", "sort", "lot", "lots", "much", "many", "maybe", "probably", "think",
             "guess", "since", "while", "during", "yesterday", "already", "still", "again", "first", "second", "few",
             "sleep", "sleeping", "woke", "slow", "fast", "easy", "hard", "quick", "long", "short", "from", "with", "by",
+            "actually", "sorry", "oops", "wait", "never", "mind", "nevermind", "ok", "okay", "yes", "yeah", "yep", "hey",
         )
     }
 }

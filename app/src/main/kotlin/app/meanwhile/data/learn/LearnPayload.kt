@@ -39,7 +39,7 @@ class LearnPayload(private val db: AppDatabase) {
         val start14 = windowEnd.minus(Duration.ofDays(14))
         val readings14 = db.cgm().between(start14.toEpochMilli(), windowEnd.toEpochMilli()).map { it.toDomain() }
         val readings24 = readings14.filter { !it.timestamp.isBefore(dayStart) }
-        val doses14 = db.doses().between(start14.toEpochMilli(), windowEnd.toEpochMilli())
+        val doses14 = db.doses().effectiveBetween(start14.toEpochMilli(), windowEnd.toEpochMilli())
         val meals14 = db.meals().between(start14.toEpochMilli(), windowEnd.toEpochMilli())
         val events14 = db.factorEvents().between(start14.toEpochMilli(), windowEnd.toEpochMilli())
         val proposals14 = db.proposals().between(start14.toEpochMilli(), windowEnd.toEpochMilli())

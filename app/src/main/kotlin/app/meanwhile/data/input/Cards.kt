@@ -1,8 +1,10 @@
 package app.meanwhile.data.input
 
+import app.meanwhile.data.db.DoseEntity
 import app.meanwhile.data.db.ProfileVersionEntity
 import app.meanwhile.domain.dose.DoseInput
 import app.meanwhile.domain.dose.DoseResult
+import app.meanwhile.domain.nba.NextBestAction
 import app.meanwhile.domain.router.RouteResult
 import kotlinx.serialization.Serializable
 
@@ -63,6 +65,10 @@ data class MealMacrosCard(
     val hasNumbers: Boolean,
     val note: String? = null,
     val estimating: Boolean = false,
+    /** A BG Danny said in the same message, kept for the dose once the numbers are confirmed. */
+    val bgOverride: Double? = null,
+    /** Set once confirmed: the dose card replaced this one. */
+    val confirmed: Boolean = false,
 ) : ResultCard
 
 data class NbaCard(
@@ -78,7 +84,13 @@ data class NbaCard(
     val bgStale: Boolean,
     val computedAt: Long,
     val computeMs: Long,
+    /** 1.4: what to do — insulin, carbs or nothing — decided by code from [result]. */
+    val action: NextBestAction,
+    /** A BG Danny said for this message ("BG 140"), used instead of the CGM. */
+    val bgOverride: Double? = null,
     val loggedMessage: String? = null,
+    /** The dose row logged from this card (for Undo). */
+    val loggedDoseId: String? = null,
     val dismissed: Boolean = false,
 ) : ResultCard
 
@@ -92,10 +104,29 @@ data class DoseConfirmCard(
     val dismissed: Boolean = false,
 ) : ResultCard
 
+/**
+ * A dose Danny said he took — already logged (1.4: saying it is logging it) — or a correction of
+ * one ("never mind, only 5"). Undo and Edit write superseding rows; nothing is deleted.
+ */
+data class DoseLoggedCard(
+    override val key: String,
+    /** The row in effect now. */
+    val dose: DoseEntity,
+    val message: String,
+    /** For a correction: the row it replaced. */
+    val previous: DoseEntity? = null,
+    /** Set once Undo/Edit replaced [dose]; the card then shows this instead of its buttons. */
+    val replacedMessage: String? = null,
+) : ResultCard
+
+/** Carbs or a meal eaten with no insulin, logged from a Next Best Action ("ate it"). */
+data class MealLoggedCard(override val key: String, val proposalId: String, val message: String) : ResultCard
+
 /** No factor was recognised for a "factor update": let Danny pick one. */
 data class FactorPickerCard(override val key: String, val text: String) : ResultCard
 
-data class InfoCard(override val key: String, val message: String, val isError: Boolean = false) : ResultCard
+/** A plain answer. [ref] names the card it changed (e.g. a factor update "cancel that" undid). */
+data class InfoCard(override val key: String, val message: String, val isError: Boolean = false, val ref: String? = null) : ResultCard
 
 /** One factor change the AI proposes (spec §9.4 online). Danny accepts, edits or rejects each. */
 data class ProposedFactorChange(

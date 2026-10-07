@@ -78,11 +78,21 @@ fun CgmSettingsSection(current: AppSettings) {
         }
     }
 
-    SectionCard("CGM — xDrip+ (optional: back-fills gaps)") {
-        OutlinedTextField(url, { url = it }, label = { Text("Web service address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    SectionCard("CGM — local web service (xDrip+ or your own app)") {
+        Text(
+            "Optional. Any app on this phone that serves readings the way xDrip+ does (Nightscout-style sgv.json) — " +
+                "xDrip+ itself or your own app. Meanwhile polls it for live readings and uses it to back-fill gaps; " +
+                "each reading is stored once whatever its source.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        feed.webMessage?.let { Text((if (feed.webOk == true) "Working · " else "") + it, style = MaterialTheme.typography.bodySmall) }
+        if (feed.webOk == true && feed.webMessage == null) {
+            Text("Working" + (feed.lastWebOkAt?.let { " · last answer ${relativeTime(it)}" } ?: ""), style = MaterialTheme.typography.bodySmall)
+        }
+        OutlinedTextField(url, { url = it }, label = { Text("Address (e.g. ${AppSettings.DEFAULT_XDRIP_URL})") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(path, { path = it }, label = { Text("Path") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(
-            secret, { secret = it }, label = { Text("API secret (only if xDrip+ requires one)") }, singleLine = true,
+            secret, { secret = it }, label = { Text("API secret (only if the service requires one)") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -127,7 +137,7 @@ fun CgmSettingsSection(current: AppSettings) {
                         val s = c.settings.current().copy(xdripBaseUrl = url.trim(), xdripPath = path.trim(), xdripApiSecret = secret.trim())
                         val readings = c.xdripWeb.fetch(s, 3)
                         val last = readings.lastOrNull()
-                        if (last == null) "Connected, but xDrip+ returned no readings" else
+                        if (last == null) "Connected, but the service returned no readings" else
                             "OK — ${last.mgDl} mg/dL at ${formatTime(last.timestamp.toEpochMilli())}"
                     } catch (e: Exception) {
                         "Failed: ${e.message}"

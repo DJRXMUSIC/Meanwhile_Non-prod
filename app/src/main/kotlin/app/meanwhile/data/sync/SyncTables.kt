@@ -5,6 +5,7 @@ package app.meanwhile.data.sync
 import app.meanwhile.data.db.AiCallEntity
 import app.meanwhile.data.db.AppDatabase
 import app.meanwhile.data.db.CgmReadingEntity
+import app.meanwhile.data.db.ConversationLogEntity
 import app.meanwhile.data.db.DoseEntity
 import app.meanwhile.data.db.FactorDefinitionEntity
 import app.meanwhile.data.db.FactorEventEntity
@@ -132,6 +133,12 @@ fun syncTables(db: AppDatabase): List<SyncTable<*>> = listOf(
     db.learningLog().let { d ->
         SyncTable(
             "learning_log", LearningLogEntity.serializer(),
+            d::pending, d::markSynced, d::markFailed, { d.insertAll(it) }, d::between,
+        ) { it.copy(syncState = SyncState.SYNCED) }
+    },
+    db.conversation().let { d ->
+        SyncTable(
+            "conversation_log", ConversationLogEntity.serializer(),
             d::pending, d::markSynced, d::markFailed, { d.insertAll(it) }, d::between,
         ) { it.copy(syncState = SyncState.SYNCED) }
     },

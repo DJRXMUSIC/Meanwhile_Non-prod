@@ -23,14 +23,15 @@ import java.time.Instant
 import kotlin.math.ceil
 
 /**
- * xDrip+ local web service (Nightscout-style `sgv.json` on 127.0.0.1:17580), polled every
+ * A local CGM web service: xDrip+'s (Nightscout-style `sgv.json` on 127.0.0.1:17580) or any app that
+ * serves readings the same way at the configured address (1.4), polled every
  * `xdripPollSeconds`. Verified against xDrip+ source: `count` is capped at 1000; an `api-secret`
  * header (SHA-1 hex of the secret) is only required off-loopback.
  */
 class XdripWebSource(
     private val http: OkHttpClient,
     private val settings: SettingsStore,
-    private val onStatus: (ok: Boolean, message: String?) -> Unit = { _, _ -> },
+    private val onStatus: (ok: Boolean, message: String?, settings: AppSettings) -> Unit = { _, _, _ -> },
 ) : CgmSource {
     override val name = "xdrip_web"
 
@@ -48,11 +49,11 @@ class XdripWebSource(
                 val readings = fetchSince(last)
                 readings.forEach { emit(it) }
                 readings.maxOfOrNull { it.timestamp }?.let { last = it }
-                onStatus(true, null)
+                onStatus(true, null, s)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onStatus(false, e.message ?: e::class.java.simpleName)
+                onStatus(false, e.message ?: e::class.java.simpleName, s)
             }
             delay(s.xdripPollSeconds * 1000L)
         }
@@ -60,12 +61,12 @@ class XdripWebSource(
 
     /** One request; throws IOException on connection/HTTP errors and for an invalid address. */
     suspend fun fetch(s: AppSettings, count: Int): List<CgmReading> = withContext(Dispatchers.IO) {
-        val url = urlFor(s.xdripBaseUrl, s.xdripPath, count) ?: throw IOException("Invalid xDrip+ address: ${s.xdripBaseUrl}")
+        val url = urlFor(s.xdripBaseUrl, s.xdripPath, count) ?: throw IOException("Invalid CGM web service address: ${s.xdripBaseUrl}")
         val request = Request.Builder().url(url).apply {
             if (s.xdripApiSecret.isNotBlank()) header("api-secret", sha1Hex(s.xdripApiSecret))
         }.build()
         http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("xDrip+ answered HTTP ${response.code}")
+            if (!response.isSuccessful) throw IOException("the CGM web service answered HTTP ${response.code}")
             XdripSgv.parse(response.body.string(), name)
         }
     }

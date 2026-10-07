@@ -25,6 +25,16 @@ insert into factor_definitions (id, created_at, recorded_at, factor_id, definiti
 insert into ai_calls (id, created_at, recorded_at, job, validation, provider, model) values ('10000000-0000-7000-8000-00000000000a', now(), now(), 'route', 'ok', 'gemini', 'g');
 insert into feedback (id, created_at, recorded_at, text) values ('10000000-0000-7000-8000-00000000000b', now(), now(), 'note');
 insert into inputs (id, created_at, recorded_at, raw_text, via, router, path_taken) values ('10000000-0000-7000-8000-00000000000c', now(), now(), 'pizza', 'text', 'offline', 'meal');
+insert into conversation_log (id, created_at, recorded_at, role, kind, text, details, input_id) values
+  ('10000000-0000-7000-8000-000000000010', now(), now(), 'user', 'message', 'took 6 units', '{"via": "voice"}', '10000000-0000-7000-8000-00000000000c'),
+  ('10000000-0000-7000-8000-000000000011', now(), now(), 'app', 'reply', 'Logged 6 u rapid', '{}', '10000000-0000-7000-8000-00000000000c');
+insert into app_logs (id, created_at, recorded_at, level, tag, message) values
+  ('10000000-0000-7000-8000-000000000012', now(), now(), 'W', 'Sync', 'sync failed (retrying automatically)');
+-- A dose logged as 4 u, then corrected to 3 u ("never mind, only 3").
+insert into doses (id, created_at, recorded_at, insulin, units, given_at) values
+  ('10000000-0000-7000-8000-000000000013', now(), now(), 'rapid', 4, now());
+insert into doses (id, created_at, recorded_at, supersedes_id, insulin, units, given_at) values
+  ('10000000-0000-7000-8000-000000000014', now(), now(), '10000000-0000-7000-8000-000000000013', 'rapid', 3, now());
 insert into learning_log (id, created_at, recorded_at, kind, summary, details) values
   ('10000000-0000-7000-8000-00000000000d', now(), now(), 'applied', 'ICR 10 → 9.4', '{"path": "dose.icr", "old": 10, "new": 9.4, "source": "auto_tune"}'),
   ('10000000-0000-7000-8000-00000000000e', now(), now(), 'kept', 'Outcomes held', '{}');
@@ -37,11 +47,15 @@ do $$
 declare t text; n int;
 begin
   foreach t in array array['cgm_readings','meals','factor_events','doses','proposals','outcomes','profile_versions',
-                           'factor_definitions','ai_calls','feedback','inputs','learning_log'] loop
+                           'factor_definitions','ai_calls','feedback','inputs','learning_log','conversation_log'] loop
     execute format('select count(*) from %I where user_id = %L and seq is not null', t, 'aaaaaaaa-0000-4000-8000-000000000001') into n;
     if n = 0 then raise exception 'FAIL 1: % has no row owned by A with a server seq', t; end if;
   end loop;
-  raise notice 'PASS 1: default user_id and server seq on all 12 tables';
+  select count(*) into n from app_logs where user_id = 'aaaaaaaa-0000-4000-8000-000000000001';
+  if n = 0 then raise exception 'FAIL 1: app_logs has no row owned by A'; end if;
+  select count(*) into n from ai_calls where request = '{}'::jsonb;
+  if n = 0 then raise exception 'FAIL 1: ai_calls.request does not default to {}'; end if;
+  raise notice 'PASS 1: default user_id and server seq on all 13 synced tables (+ app_logs)';
 end $$;
 
 -- 2. User B sees none of A's rows in any table or view.
@@ -51,13 +65,14 @@ do $$
 declare t text; n int;
 begin
   foreach t in array array['cgm_readings','meals','factor_events','doses','proposals','outcomes','profile_versions',
-                           'factor_definitions','ai_calls','feedback','inputs','learning_log',
+                           'factor_definitions','ai_calls','feedback','inputs','learning_log','conversation_log','app_logs',
                            'v_cgm_local','v_tir_daily','v_tir_hourly','v_tir_monthly','v_tir_by_time_of_day',
-                           'v_tir_by_weekday','v_proposal_outcomes','v_ai_calls_by_model','v_learned_changes'] loop
+                           'v_tir_by_weekday','v_proposal_outcomes','v_ai_calls_by_model','v_learned_changes',
+                           'v_doses_effective','v_conversation'] loop
     execute format('select count(*) from %I', t) into n;
     if n <> 0 then raise exception 'FAIL 2: user B sees % rows of %', n, t; end if;
   end loop;
-  raise notice 'PASS 2: user B sees nothing of A in 12 tables and 9 views';
+  raise notice 'PASS 2: user B sees nothing of A in 14 tables and 11 views';
 end $$;
 
 -- 3. B cannot write rows owned by A.
@@ -77,6 +92,8 @@ do $$ begin
   begin update meals set carbs_g = 1; raise exception 'FAIL 4: update allowed'; exception when insufficient_privilege then null; end;
   begin delete from doses; raise exception 'FAIL 4: delete allowed'; exception when insufficient_privilege then null; end;
   begin delete from learning_log; raise exception 'FAIL 4: delete allowed on learning_log'; exception when insufficient_privilege then null; end;
+  begin update conversation_log set text = 'edited'; raise exception 'FAIL 4: update allowed on conversation_log'; exception when insufficient_privilege then null; end;
+  begin delete from app_logs; raise exception 'FAIL 4: delete allowed on app_logs'; exception when insufficient_privilege then null; end;
   begin
     insert into feedback (id, created_at, recorded_at, text, seq) values ('20000000-0000-7000-8000-000000000002', now(), now(), 'x', 1);
     raise exception 'FAIL 4: client-supplied seq accepted';
@@ -95,7 +112,13 @@ begin
   if f is distinct from 'followed' then raise exception 'FAIL 5: proposal follow = %', f; end if;
   select outcome into o from v_learned_changes where path = 'dose.icr';
   if o is distinct from 'kept' then raise exception 'FAIL 5: learned change outcome = %', o; end if;
-  raise notice 'PASS 5: views return A''s data (TIR, proposal followed, learned change kept)';
+  select count(*) into n from v_doses_effective where id = '10000000-0000-7000-8000-000000000013';
+  if n <> 0 then raise exception 'FAIL 5: a corrected dose is still in effect'; end if;
+  select count(*) into n from v_doses_effective where id = '10000000-0000-7000-8000-000000000014' and units = 3;
+  if n <> 1 then raise exception 'FAIL 5: the correction is not in effect'; end if;
+  select count(*) into n from v_conversation where role = 'user' and text = 'took 6 units';
+  if n <> 1 then raise exception 'FAIL 5: v_conversation misses the message'; end if;
+  raise notice 'PASS 5: views return A''s data (TIR, proposal followed, learned change kept, corrected dose, conversation)';
 end $$;
 
 -- 6. The anon key reads nothing.
@@ -105,6 +128,9 @@ do $$ begin
   begin perform 1 from doses limit 1; raise exception 'FAIL 6: anon can read doses'; exception when insufficient_privilege then null; end;
   begin perform 1 from learning_log limit 1; raise exception 'FAIL 6: anon can read learning_log'; exception when insufficient_privilege then null; end;
   begin perform 1 from v_learned_changes limit 1; raise exception 'FAIL 6: anon can read v_learned_changes'; exception when insufficient_privilege then null; end;
+  begin perform 1 from conversation_log limit 1; raise exception 'FAIL 6: anon can read conversation_log'; exception when insufficient_privilege then null; end;
+  begin perform 1 from app_logs limit 1; raise exception 'FAIL 6: anon can read app_logs'; exception when insufficient_privilege then null; end;
+  begin perform 1 from v_conversation limit 1; raise exception 'FAIL 6: anon can read v_conversation'; exception when insufficient_privilege then null; end;
   raise notice 'PASS 6: anon cannot read tables or views';
 end $$;
 reset role;
