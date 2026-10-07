@@ -77,6 +77,13 @@ class AiClient(
     /** Usable right now: configured, signed in with a live session, network up. */
     fun reachable(): Boolean = client != null && network.online.value && auth.currentUserId() != null
 
+    /**
+     * What the AI is doing right now, in words ("Asking Gemini…", "Gemini didn't answer — asking
+     * Claude…"), shown live on the message's step line (1.4: never wait without knowing why).
+     */
+    private val _activity = MutableStateFlow<String?>(null)
+    val activity: StateFlow<String?> = _activity
+
     suspend fun call(
         job: String,
         payload: JsonObject,
@@ -88,10 +95,67 @@ class AiClient(
         /** Learn-cycle batches (1.4): {"mode": "submit"} or {"mode": "poll", "id": …}. */
         batch: JsonObject? = null,
     ): AiOutcome {
+        val pref = preferenceWire ?: (preference ?: settings.current().aiProvider).wire
+        // Jobs Danny waits on try one provider per request, so the screen can say which one is
+        // working and when it moves on to the other (the function would otherwise do it silently).
+        val order = when {
+            batch != null || job == "learn_cycle" -> null
+            pref == AiProviderPreference.GEMINI_FIRST.wire -> listOf(AiProviderPreference.GEMINI_ONLY, AiProviderPreference.CLAUDE_ONLY)
+            pref == AiProviderPreference.CLAUDE_FIRST.wire -> listOf(AiProviderPreference.CLAUDE_ONLY, AiProviderPreference.GEMINI_ONLY)
+            else -> null
+        }
+        if (order == null) {
+            _activity.value = "Asking ${providerName(pref)}"
+            return try {
+                callOnce(job, payload, inputId, summary, timeoutMs, pref, batch)
+            } finally {
+                _activity.value = null
+            }
+        }
+        var last: AiOutcome? = null
+        try {
+            for ((i, p) in order.withIndex()) {
+                _activity.value = if (i == 0) "Asking ${providerName(p.wire)}" else
+                    "${providerName(order[0].wire)} didn't answer (${shortReason(last)}) — asking ${providerName(p.wire)}"
+                val out = callOnce(job, payload, inputId, summary, timeoutMs, p.wire, null)
+                if (out !is AiOutcome.Failed) return out
+                last = out
+                // Nothing to gain from the other provider when the problem is on this side.
+                if (out.callId == null) return out
+            }
+        } finally {
+            _activity.value = null
+        }
+        return last ?: AiOutcome.Failed("no provider", null)
+    }
+
+    private fun providerName(wire: String) = when {
+        wire.startsWith("gemini") -> "Gemini"
+        wire.startsWith("claude") -> "Claude"
+        else -> "the AI"
+    }
+
+    private fun shortReason(o: AiOutcome?): String {
+        val r = (o as? AiOutcome.Failed)?.reason ?: return "no answer"
+        return when {
+            r.contains("timed out", ignoreCase = true) -> "timed out"
+            r.contains("429") || r.contains("rate", ignoreCase = true) -> "busy"
+            else -> r.substringBefore(" · ").take(60)
+        }
+    }
+
+    private suspend fun callOnce(
+        job: String,
+        payload: JsonObject,
+        inputId: String?,
+        summary: String,
+        timeoutMs: Long,
+        pref: String,
+        batch: JsonObject?,
+    ): AiOutcome {
         val c = client ?: return AiOutcome.Failed("AI not configured", null)
         if (!network.online.value) return AiOutcome.Failed("offline", null)
         auth.awaitSessionUserId(3_000) ?: return AiOutcome.Failed("not signed in", null)
-        val pref = preferenceWire ?: (preference ?: settings.current().aiProvider).wire
         val started = System.currentTimeMillis()
         val body = buildJsonObject {
             put("job", job)
@@ -99,7 +163,7 @@ class AiClient(
             put("provider_preference", pref)
             batch?.let { put("batch", it) }
         }
-        // timeoutMs is the whole wait: the function tries each provider within it (fast jobs ~45 s).
+        // timeoutMs is this request's wait (one provider for the quick jobs, up to 60 s at the function).
         val (envelope, httpError) = try {
             val text = withTimeout(timeoutMs + 5_000) {
                 c.functions.invoke("ai") {
@@ -197,10 +261,11 @@ class AiClient(
 
     companion object {
         /**
-         * Jobs Danny waits on: the function gives each provider 20 s and the pair 45 s (1.4: up from
-         * 15 s, with every step shown on screen and a Skip button, so a slow answer is never a mystery).
+         * Jobs Danny waits on, per provider: the function gives each one 60 s (1.4: Danny would rather
+         * wait than time out — every step, which AI is working and the seconds show on screen, and
+         * "skip" answers offline at any time).
          */
-        const val FAST_TIMEOUT_MS = 45_000L
+        const val FAST_TIMEOUT_MS = 65_000L
         const val LEARN_TIMEOUT_MS = 140_000L
         /** Submitting or polling a learn batch is quick; the review itself runs at Anthropic. */
         const val BATCH_TIMEOUT_MS = 30_000L

@@ -28,6 +28,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
@@ -51,6 +52,8 @@ interface AiHooks {
     val online: Boolean get() = false
     /** The most recent AI call's provider, model and timing (null when none ran). */
     fun lastCall(): AiCallInfo? = null
+    /** What the AI is doing right now ("Asking Gemini…"), for the running step's line. */
+    fun activity(): kotlinx.coroutines.flow.StateFlow<String?>? = null
 }
 
 /** The latest undoable things in this conversation that only the screen knows about (1.4 "cancel that"). */
@@ -219,7 +222,7 @@ class InputProcessor(
             nba.logProposal(
                 open, units, later, reason = if (units != (split?.firstUnits ?: open.result.finalUnits)) "said: “$text”" else null,
                 now = now, givenAt = at, inputId = inputId,
-            ).let { it.copy(message = it.message + " (for: ${open.action.headline.lowercase()})") }
+            )
         } else {
             nba.logStated(d.units, d.insulin, at.toEpochMilli(), inputId, now = now)
         }
@@ -234,7 +237,7 @@ class InputProcessor(
         return when (open.action.kind) {
             ActionKind.TAKE_INSULIN, ActionKind.SPLIT_INSULIN -> {
                 val logged = nba.logProposal(open, open.action.unitsNow, open.action.unitsLater, null, now = now, givenAt = at, inputId = inputId)
-                DoseLoggedCard("dose-${logged.dose.id}", logged.dose, logged.message + " (as suggested)")
+                DoseLoggedCard("dose-${logged.dose.id}", logged.dose, logged.message)
             }
             ActionKind.TREAT_LOW, ActionKind.EAT_CARBS, ActionKind.EAT_NO_INSULIN ->
                 MealLoggedCard("meal-${open.proposalId}", open.proposalId, nba.logMealOnly(open, now = at))
@@ -388,7 +391,19 @@ class InputProcessor(
             val start = System.currentTimeMillis()
             onStep(Step(id, label, StepState.RUNNING, startedAt = start))
             try {
-                val (value, detail) = block()
+                // While it runs, the line says what the AI is doing ("Asking Gemini…", "…asking Claude").
+                val (value, detail) = coroutineScope {
+                    val live = ai().activity()?.let { flow ->
+                        launch {
+                            flow.collect { a -> if (a != null) onStep(Step(id, label, StepState.RUNNING, a, start)) }
+                        }
+                    }
+                    try {
+                        block()
+                    } finally {
+                        live?.cancel()
+                    }
+                }
                 val step = Step(id, label, StepState.DONE, detail, start, System.currentTimeMillis())
                 onStep(step)
                 conversation.step(inputId, step)

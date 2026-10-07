@@ -42,6 +42,8 @@ class AiHooksImpl(
 
     override fun lastCall(): AiCallInfo? = ai.lastCall
 
+    override fun activity() = ai.activity
+
     private fun base(profile: Profile, now: Instant = Instant.now()) = mapOf(
         "now" to isoOf(now.toEpochMilli()),
         "timezone" to zone().id,

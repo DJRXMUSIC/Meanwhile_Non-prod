@@ -24,10 +24,10 @@ export class ProviderError extends Error {
 
 // Model names come from env so they can be upgraded without code changes (spec §10.1).
 // *_FAST_MODEL is used for the jobs Danny waits on (route, estimate_meal, update_profile): Gemini
-// 3.8 Flash (Danny's choice for day-to-day) with Claude Haiku 4.5 as the quick fallback — both
-// answer in a few seconds. 1.4: the quick jobs kept timing out because Gemini 3.x thinks deeply by
-// default and Opus always thinks; quick jobs now ask Gemini for minimal/low thinking and fall back
-// to Haiku. If Google doesn't know a configured model, the call retries once on the matching
+// 3.8 Flash (Danny's choice for day-to-day) with Claude Opus 5.5 as the fallback (Danny: no Haiku;
+// he would rather wait than time out). 1.4: the quick jobs kept timing out because Gemini 3.x thinks
+// deeply by default; they now ask Gemini for minimal/low thinking, and each provider gets 60 s.
+// If Google doesn't know a configured model, the call retries once on the matching
 // "-latest" alias rather than failing. Learning on Claude runs as a batch at max effort
 // (CLAUDE_LEARN_MODEL / CLAUDE_LEARN_EFFORT; see below).
 export const FAST_JOBS: Job[] = ["route", "estimate_meal", "update_profile"];
@@ -38,8 +38,8 @@ function geminiModel(job: Job): string {
 }
 
 function claudeModel(job: Job): string {
-  if (FAST_JOBS.includes(job)) return Deno.env.get("CLAUDE_FAST_MODEL") ?? "claude-haiku-4-5";
-  return Deno.env.get("CLAUDE_MODEL") ?? "claude-opus-5-5";
+  const main = Deno.env.get("CLAUDE_MODEL") ?? "claude-opus-5-5";
+  return FAST_JOBS.includes(job) ? Deno.env.get("CLAUDE_FAST_MODEL") ?? main : main;
 }
 
 /**
@@ -121,11 +121,11 @@ export async function callClaude(c: ProviderCall): Promise<ProviderResult> {
   };
   const options = { timeout: c.timeoutMs, signal: AbortSignal.timeout(c.timeoutMs) };
   try {
-    // Stream so long learn-cycle outputs never hit an HTTP timeout; finalMessage() collects it.
-    // The learn cycle (Opus) also asks Anthropic to re-run a safety-classifier decline on its
-    // recommended model; the quick jobs' fast model doesn't need that.
+    // Stream so long outputs never hit an HTTP timeout; finalMessage() collects it. Opus/Sonnet
+    // also ask Anthropic to re-run a safety-classifier decline on its recommended model (a Haiku
+    // set via CLAUDE_FAST_MODEL goes without that beta).
     // deno-lint-ignore no-explicit-any
-    const message: any = FAST_JOBS.includes(c.job)
+    const message: any = !supportsEffort(model)
       // deno-lint-ignore no-explicit-any
       ? await client.messages.stream(base as any, options).finalMessage()
       // deno-lint-ignore no-explicit-any

@@ -112,10 +112,10 @@ coding assistant (it says what the app is and where the code lives). Nothing sec
 ## Reference (optional)
 
 - **AI:** Settings → AI has two choices. *Day to day* (your messages, meal estimates, factor
-  updates): Gemini first (default) = Gemini 3.8 Flash with Claude Haiku 4.5 as the quick fallback.
+  updates): Gemini first (default) = Gemini 3.8 Flash, then Claude Opus 5.5 if it doesn't answer (each up to 60 s).
   *Learning*: Claude first (default) = Claude Opus 5.5 at max effort, sent as an overnight batch, with
   Gemini Pro as the fallback. Model overrides as Supabase secrets (defaults): `GEMINI_FAST_MODEL` =
-  `gemini-3.8-flash`, `GEMINI_MODEL` = `gemini-pro-latest`, `CLAUDE_FAST_MODEL` = `claude-haiku-4-5`,
+  `gemini-3.8-flash`, `GEMINI_MODEL` = `gemini-pro-latest`, `CLAUDE_FAST_MODEL` (unset = `CLAUDE_MODEL`),
   `CLAUDE_MODEL` / `CLAUDE_LEARN_MODEL` = `claude-opus-5-5`, `CLAUDE_LEARN_EFFORT` = `max`.
   `ALLOWED_USER_IDS` (your user id — Settings → Account → Copy) makes the AI allowlist explicit.
 - **Logs for AI assistants:** every message, step, answer and tap (`conversation_log`), every AI call

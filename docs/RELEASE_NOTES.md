@@ -25,8 +25,9 @@ Obtainium at this repo — see `docs/INSTALL.md`). Updating keeps all your data.
 - **A mic you can trust.** The mic shows every state — starting, *listening* (with a live level bar),
   *hearing you* (the words appear as you speak), *writing it down* — and the phone ticks when it starts
   and stops. What you said is sent when you stop talking (Settings → Voice to review it first).
-- **AI that answers in seconds.** Day-to-day AI is Gemini 3.8 Flash with minimal thinking (it timed
-  out before because Gemini 3.x thinks hard by default) and Claude Haiku 4.5 as the quick fallback.
+- **AI that doesn't time out.** Day-to-day AI is Gemini 3.8 Flash with minimal thinking (it timed
+  out before because Gemini 3.x thinks hard by default), then Claude Opus 5.5 if it doesn't answer —
+  each gets up to 60 s, and the message shows which one is working and for how long.
   Messages the phone reads with certainty ("took 6 units", "60 carbs 20 fat", "BG 140") skip the AI
   entirely.
 - **Learning on Claude Opus 5.5 at max effort.** The nightly review — and the mid-day reviews after

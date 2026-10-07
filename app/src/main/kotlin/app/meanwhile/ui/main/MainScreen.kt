@@ -243,17 +243,11 @@ private fun LiveDetails(live: DoseContext?, profile: ProfileState, queued: Int, 
 
 @Composable
 private fun EmptyHint() {
-    Column(Modifier.padding(vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Tell me what you're doing.", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "I'll log it and tell you the next best action — insulin, food, or nothing. Tap the mic or type.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        listOf(
-            "“60 carbs 20 fat 30 protein”", "“pizza and a coffee”", "“took 6 units”", "“never mind, only 5”",
-            "“BG 140, what should I do?”", "“took it”", "“went for a 3 mile run”",
-        ).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    }
+    Text(
+        "Tell me what you're doing.",
+        style = MaterialTheme.typography.titleLarge,
+        modifier = Modifier.padding(vertical = 24.dp),
+    )
 }
 
 @Composable
@@ -334,7 +328,7 @@ private fun Composer(vm: MainViewModel, profile: Profile) {
                     value = vm.text,
                     onValueChange = { vm.text = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Say or type what you're doing…") },
+                    placeholder = { Text("Message") },
                     maxLines = 4,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { sendTyped() }),

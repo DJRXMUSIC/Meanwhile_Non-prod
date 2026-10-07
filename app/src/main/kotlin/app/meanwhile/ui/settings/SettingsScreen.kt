@@ -143,7 +143,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 val status by c.ai.status.collectAsStateWithLifecycle()
                 Text("Dose math never depends on the AI — it only understands what you say, estimates meals and learns.", style = MaterialTheme.typography.bodySmall)
                 Text("Day to day (your messages, meal estimates, factor updates)", style = MaterialTheme.typography.titleSmall)
-                Text("Gemini = Gemini 3.8 Flash, answers in a few seconds. Each provider gets 20 s; every step shows on screen.", style = MaterialTheme.typography.bodySmall)
+                Text("Gemini = Gemini 3.8 Flash; Claude = Claude Opus 5.5. The first one gets up to 60 s, then the other; the screen shows which one is working.", style = MaterialTheme.typography.bodySmall)
                 AiProviderPreference.entries.forEach { pref ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = st.aiProvider == pref, onClick = { scope.launch { c.settings.update { it.copy(aiProvider = pref) } } })

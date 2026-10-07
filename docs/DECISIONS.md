@@ -473,8 +473,11 @@ he says logged (and corrected), learn on Claude Opus at max effort, log everythi
 - **Quick AI timed out → fixed.** Gemini 3.x thinks deeply by default, so routing needed 15 s+; the
   Claude fallback (Opus, thinking always on) was as slow. Quick jobs now send Gemini
   `thinkingLevel` MINIMAL (route) / LOW (estimate, update) — retried without it if a model rejects it —
-  and fall back to Claude Haiku 4.5 (no `effort`, no server-side-fallback beta). Per provider 20 s,
-  per job 45 s (`budgets.ts`); the app waits 50 s, shows each step and offers "skip AI" after 3 s.
+  and fall back to Claude Opus 5.5 (Danny: no Haiku — he'd rather wait than time out). The app asks
+  one provider per request (`gemini_only`, then `claude_only`) so the step line can say "Asking
+  Gemini…" / "Gemini didn't answer (timed out) — asking Claude…" (`AiClient.activity`); each gets 60 s
+  (`budgets.ts`), elapsed seconds show live, and "Don't wait — answer without AI" appears after 10 s.
+  The function still falls back by itself for callers that send `gemini_first`.
 - **Learning on Claude Opus 5.5 at max effort via the Message Batches API.** An Edge Function may
   run ~150 s; a max-effort review can think far longer. `learn_cycle` with `batch: {mode: submit}`
   queues one request (Opus 5.5, `effort: max`, 128K max tokens, structured output, cached system

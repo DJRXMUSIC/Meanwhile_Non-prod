@@ -144,7 +144,7 @@ Deno.test("jobs Danny waits on use fast models by default; the learn cycle keeps
   for (const k of ["GEMINI_FAST_MODEL", "GEMINI_MODEL", "CLAUDE_FAST_MODEL", "CLAUDE_MODEL"]) Deno.env.delete(k);
   for (const job of ["route", "estimate_meal", "update_profile"] as Job[]) {
     assertEquals(modelFor("gemini", job), "gemini-3.8-flash", job);
-    assertEquals(modelFor("claude", job), "claude-haiku-4-5", job);
+    assertEquals(modelFor("claude", job), "claude-opus-5-5", job);
   }
   assertEquals(modelFor("gemini", "learn_cycle"), "gemini-pro-latest");
   assertEquals(modelFor("claude", "learn_cycle"), "claude-opus-5-5");
@@ -217,10 +217,10 @@ Deno.test("gemini: a model that rejects the thinking level is asked again withou
   }
 });
 
-Deno.test("quick jobs get 20 s per provider and 45 s in all; the learn cycle answered directly 120 s", () => {
+Deno.test("quick jobs get 60 s per provider; the learn cycle answered directly 120 s", () => {
   for (const job of ["route", "estimate_meal", "update_profile"] as Job[]) {
-    assertEquals(TIMEOUT_MS[job], 20_000, job);
-    assertEquals(BUDGET_MS[job], 45_000, job);
+    assertEquals(TIMEOUT_MS[job], 60_000, job);
+    assert(BUDGET_MS[job] >= 2 * TIMEOUT_MS[job] && BUDGET_MS[job] < 150_000, job);
   }
   assertEquals(TIMEOUT_MS.learn_cycle, 120_000);
   assert(BUDGET_MS.learn_cycle < 150_000, "inside the Edge Function wall clock");

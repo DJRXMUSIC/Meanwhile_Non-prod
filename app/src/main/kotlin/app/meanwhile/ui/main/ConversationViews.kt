@@ -138,8 +138,8 @@ private fun StepsView(turn: Turn, vm: MainViewModel) {
             if (turn.steps.isEmpty()) StepRow(Step("received", "Got it — starting", StepState.RUNNING, startedAt = turn.at), now.toEpochMilli())
             turn.steps.forEach { StepRow(it, now.toEpochMilli()) }
             val running = turn.steps.lastOrNull { it.state == StepState.RUNNING }
-            if (running != null && running.label.endsWith("(AI)") && now.toEpochMilli() - running.startedAt > 3_000) {
-                TextButton(onClick = vm::skipAi) { Text("AI is slow — skip it and answer offline") }
+            if (running != null && running.label.endsWith("(AI)") && now.toEpochMilli() - running.startedAt > 10_000) {
+                TextButton(onClick = vm::skipAi) { Text("Don't wait — answer without AI") }
             }
         }
     } else if (turn.steps.isNotEmpty()) {
