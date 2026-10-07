@@ -6,6 +6,7 @@ import app.meanwhile.domain.dose.DoseResult
 import app.meanwhile.domain.profile.Profile
 import kotlinx.serialization.Serializable
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -103,6 +104,12 @@ object NextBestActions {
         }
         if (hasMeal) why += "Meal: ${g(input.carbsG)} g carbs, ${g(input.fatG)} g fat, ${g(input.proteinG)} g protein."
         if (input.iob >= 0.05) why += "Insulin on board: ${fmt(input.iob)} u."
+        if (abs(input.cobUnits) >= 0.05) why += "Carbs still absorbing from logged meals: +${fmt(input.cobUnits)} u."
+        if (abs(input.unexplainedUnits) >= 0.05) why += if (input.unexplainedUnits > 0) {
+            "Rising faster than logged insulin and food explain: +${fmt(input.unexplainedUnits)} u."
+        } else {
+            "Falling faster than logged insulin and food explain: ${fmt(input.unexplainedUnits)} u."
+        }
         why += "Dose math: ${fmt(result.raw)} u → ${if (units == 0 && result.raw < 0) "0 u (below zero)" else "rounds to $units u"}."
 
         fun recheck() = if (s.recheckMin > 0) " · recheck in ${s.recheckMin} min" else ""
@@ -163,6 +170,8 @@ object NextBestActions {
                 if (low) why += "BG is below $lowLine — eat as soon as you inject."
                 val detail = if (hasMeal) eat(result.leadTimeMin) else buildList {
                     if (result.correction > 0) add("correction")
+                    if (result.cobUnits >= 0.5) add("carbs still absorbing")
+                    if (result.unexplainedUnits >= 0.5) add("rising more than logged food explains")
                     result.pendingUnits.forEach { add(it.name.lowercase(Locale.US)) }
                 }.joinToString(" + ").ifEmpty { "insulin" } + " — no food needed"
                 NextBestAction(

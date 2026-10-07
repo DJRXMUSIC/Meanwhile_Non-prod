@@ -23,6 +23,10 @@ data class DoseInput(
     val factors: List<FactorWeight> = emptyList(),
     /** Units from pending units-per-event factors (caffeine cups × units per cup). */
     val pendingUnits: List<PendingUnits> = emptyList(),
+    /** 2.0: carbs from logged meals still absorbing ÷ ICR (see [app.meanwhile.domain.forecast.Forecast]). */
+    val cobUnits: Double = 0.0,
+    /** 2.0: the CGM change logged insulin and carbs don't explain, carried forward, ÷ ISF. */
+    val unexplainedUnits: Double = 0.0,
 )
 
 @Serializable
@@ -67,6 +71,8 @@ data class DoseResult(
     val warnings: List<String>,
     /** Non-empty when the profile has values the math can't use; [finalUnits] is then 0 and not a dose. */
     val profileProblems: List<String> = emptyList(),
+    val cobUnits: Double = 0.0,
+    val unexplainedUnits: Double = 0.0,
 )
 
 object DoseEngine {
@@ -97,7 +103,7 @@ object DoseEngine {
             proteinUnits = input.proteinG / m.proteinGPerUnit
         }
 
-        val baseline = carbDose + fatUnits + proteinUnits + correction - input.iob
+        val baseline = carbDose + fatUnits + proteinUnits + correction - input.iob + input.cobUnits + input.unexplainedUnits
 
         // Weights are added, never multiplied: combined = 1 + Σ(w − 1).
         val terms = buildList {
@@ -135,6 +141,7 @@ object DoseEngine {
             capped = capped, clampedAtZero = clampedAtZero, pendingUnits = input.pendingUnits, addedUnits = addedUnits,
             raw = raw, finalUnits = finalUnits, suggestedCarbsG = suggestedCarbs, split = split,
             leadTimeMin = lead, leadTimeSteps = steps, warnings = warnings, profileProblems = problems,
+            cobUnits = input.cobUnits, unexplainedUnits = input.unexplainedUnits,
         )
     }
 

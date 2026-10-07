@@ -62,6 +62,9 @@ class TestEnv : Closeable {
     )
     val factorUpdater = FactorUpdater(db, records, profiles, onWrite)
     val conversation = ConversationLog(db, records, onWrite)
+    /** Advice notifications "posted" (2.0); nothing reaches the system tray in tests. */
+    val posted = mutableListOf<app.meanwhile.domain.nba.Alert>()
+    val advice = app.meanwhile.data.input.AdviceService(nba, settings, conversation) { posted += it }
     /** The AI layer the processor sees; offline unless a test swaps in a fake. */
     var aiHooks: AiHooks = object : AiHooks {}
     val inputs = InputProcessor(db, records, profiles, factorUpdater, nba, onWrite, conversation) { aiHooks }
@@ -83,6 +86,11 @@ class TestEnv : Closeable {
         nba.logFromProposal(card, units ?: card.result.finalUnits, 0, null, now = at)
         curve(at, bg.toInt(), min, end)
         return card.proposalId
+    }
+
+    /** CGM every 5 min from [from] to [to] (inclusive), [mgAt] minutes after [from]. */
+    suspend fun readings(from: Instant, minutes: Int, mgAt: (Int) -> Int) {
+        cgm.save((0..minutes step 5).map { m -> CgmReading(from.plus(Duration.ofMinutes(m.toLong())), mgAt(m), null, "Flat", "test") })
     }
 
     suspend fun curve(start: Instant, from: Int, low: Int, end: Int) {

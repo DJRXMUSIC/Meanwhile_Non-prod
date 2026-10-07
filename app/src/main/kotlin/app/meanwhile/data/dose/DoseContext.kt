@@ -12,6 +12,10 @@ import app.meanwhile.domain.dose.PendingUnits
 import app.meanwhile.domain.factors.AppliedFactor
 import app.meanwhile.domain.factors.FactorEngine
 import app.meanwhile.domain.factors.PendingUnitsEvent
+import app.meanwhile.domain.forecast.CarbEntry
+import app.meanwhile.domain.forecast.Forecast
+import app.meanwhile.domain.forecast.Forecaster
+import app.meanwhile.domain.forecast.GlucosePoint
 import app.meanwhile.domain.iob.Iob
 import app.meanwhile.domain.iob.RapidDose
 import java.time.Duration
@@ -29,6 +33,8 @@ data class DoseContext(
     val applied: List<AppliedFactor>,
     val pendingUnits: List<PendingUnits>,
     val lastRapidDoseAt: Long?,
+    /** 2.0: carbs still absorbing and the CGM change the records don't explain. */
+    val forecast: Forecast = Forecast.NONE,
 ) {
     fun input(
         carbsG: Double = 0.0,
@@ -43,6 +49,8 @@ data class DoseContext(
         iob = iob,
         factors = DoseEngine.weights(applied),
         pendingUnits = pendingUnits,
+        cobUnits = forecast.cobUnits,
+        unexplainedUnits = forecast.unexplainedUnits,
     )
 }
 
@@ -62,6 +70,18 @@ class DoseContextBuilder(
         val rapid = db.doses().effectiveSince(lookback.toEpochMilli()).filter { it.insulin == "rapid" }
         val iob = Iob.total(rapid.map { RapidDose(it.units, it.givenAt) }, now.toEpochMilli(), p.iob)
         val lastRapid = db.doses().latestEffectiveRapid()?.givenAt
+        val f = p.forecast
+        val mealsFrom = now.minus(Duration.ofMinutes((f.carbDelayMin + f.carbAbsorptionMin).toLong() + 5))
+        val meals = db.meals().between(mealsFrom.toEpochMilli(), now.plus(Duration.ofHours(2)).toEpochMilli())
+            .filter { it.carbsG > 0 }
+            .map { CarbEntry(it.carbsG, it.recordedAt) }
+        val forecast = Forecaster.compute(
+            now.toEpochMilli(),
+            readings.map { GlucosePoint(it.timestamp.toEpochMilli(), it.mgDl.toDouble()) },
+            rapid.map { RapidDose(it.units, it.givenAt) },
+            meals,
+            p,
+        )
         val events = db.factorEvents().since(now.minus(Duration.ofDays(2)).toEpochMilli())
             .filter { it.unitsAdd != null && it.action != "deactivate" }
             .map { PendingUnitsEvent(it.factorId, it.unitsAdd ?: 0.0, amountOf(it.details), it.recordedAt) }
@@ -80,6 +100,7 @@ class DoseContextBuilder(
             applied = FactorEngine.applied(p, now, zone(), readings),
             pendingUnits = pending,
             lastRapidDoseAt = lastRapid,
+            forecast = forecast,
         )
     }
 

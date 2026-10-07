@@ -112,8 +112,8 @@ class ConversationLog(
     suspend fun error(inputId: String?, text: String) = write(ROLE_APP, KIND_ERROR, text, EMPTY, inputId)
 
     /** A notification the app posted (title and text as shown). */
-    suspend fun notification(text: String, details: JsonObject = EMPTY, inputId: String? = null) =
-        write(ROLE_APP, KIND_NOTIFICATION, text, details, inputId)
+    suspend fun notification(text: String, details: JsonObject = EMPTY, inputId: String? = null, at: Instant = Instant.now()) =
+        write(ROLE_APP, KIND_NOTIFICATION, text, details, inputId, at)
 
     /** Messages, replies, taps and errors since [from] (the history shown above this session's chat). */
     suspend fun transcriptSince(from: Long): List<ConversationLogEntity> = db.conversation().transcriptSince(from)

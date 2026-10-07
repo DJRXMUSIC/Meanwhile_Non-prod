@@ -379,6 +379,10 @@ interface ConversationLogDao : RecordDao<ConversationLogEntity> {
     @Query("SELECT * FROM conversation_log WHERE recordedAt >= :from AND kind IN ('message', 'reply', 'action', 'error', 'notification') ORDER BY recordedAt, id")
     suspend fun transcriptSince(from: Long): List<ConversationLogEntity>
 
+    /** Notifications the app posted since [from] (2.0 advice), live — shown in the open conversation. */
+    @Query("SELECT * FROM conversation_log WHERE recordedAt >= :from AND kind = 'notification' ORDER BY recordedAt, id")
+    fun notificationsSince(from: Long): Flow<List<ConversationLogEntity>>
+
     @Query("SELECT * FROM conversation_log WHERE inputId = :inputId ORDER BY recordedAt, id")
     suspend fun forInput(inputId: String): List<ConversationLogEntity>
 }

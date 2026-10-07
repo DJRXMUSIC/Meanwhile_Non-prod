@@ -36,6 +36,7 @@ fun NowState.toJson(): JsonObject = buildJsonObject {
     putJsonArray("pending_units") {
         context.pendingUnits.forEach { p -> addJsonObject { put("name", p.name); put("units", p.units) } }
     }
+    put("forecast", AppJson.encodeToJsonElement(app.meanwhile.domain.forecast.Forecast.serializer(), context.forecast))
     put("current_action", AppJson.encodeToJsonElement(NextBestAction.serializer(), action))
     val d = context.profile.profile.dose
     put("profile", buildJsonObject { put("icr", d.icr); put("isf", d.isf); put("target", d.target); put("version", context.profile.versionLabel) })

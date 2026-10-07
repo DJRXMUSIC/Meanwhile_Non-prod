@@ -34,6 +34,13 @@ fun Breakdown(input: DoseInput, result: DoseResult, profile: Profile, modifier: 
             Line("Correction (no BG)", "0.00")
         }
         Line("Insulin on board", signed(-result.iob))
+        if (result.cobUnits != 0.0) Line("Carbs still absorbing ÷ ICR ${fmt(d.icr, 1)}", signed(result.cobUnits))
+        if (result.unexplainedUnits != 0.0) {
+            Line(
+                (if (result.unexplainedUnits > 0) "Rising" else "Falling") + " more than logged insulin & food explain ÷ ISF ${fmt(d.isf, 0)}",
+                signed(result.unexplainedUnits),
+            )
+        }
         HorizontalDivider()
         Line("Baseline", fmt(result.baseline), bold = true)
         if (result.terms.isEmpty()) {

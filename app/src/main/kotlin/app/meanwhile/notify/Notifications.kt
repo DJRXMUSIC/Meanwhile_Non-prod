@@ -20,6 +20,7 @@ object Notifications {
     const val CHANNEL_REMINDERS = "reminders"
     const val CHANNEL_REPORTS = "reports"
     const val CHANNEL_ALERTS = "alerts"
+    const val CHANNEL_ADVICE = "advice"
 
     const val ID_FOREGROUND = 1
     const val ID_CGM_STALE = 2
@@ -27,6 +28,8 @@ object Notifications {
     const val ID_MORNING_REPORT = 4
     const val ID_AI_REFINEMENT = 5
     const val ID_LEARNING = 6
+    /** Advice uses ID_ADVICE_BASE + the alert kind's ordinal (one live notification per kind). */
+    const val ID_ADVICE_BASE = 20
     /** Split reminders use ID_SPLIT_BASE + a per-proposal offset. */
     const val ID_SPLIT_BASE = 1000
 
@@ -45,6 +48,9 @@ object Notifications {
                 },
                 NotificationChannel(CHANNEL_REPORTS, "Reports & proposals", NotificationManager.IMPORTANCE_DEFAULT).apply {
                     description = "Morning report ready, AI refinements ready for review"
+                },
+                NotificationChannel(CHANNEL_ADVICE, "What to do now", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Lows, carbs to eat and corrections the dose math suggests on its own"
                 },
                 NotificationChannel(CHANNEL_ALERTS, "Problems", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "CGM readings stale, cloud sync failing"

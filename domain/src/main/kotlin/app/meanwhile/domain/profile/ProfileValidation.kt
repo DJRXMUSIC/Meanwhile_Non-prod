@@ -68,6 +68,19 @@ object ProfileValidation {
         if (n.recheckMin < 0) add("nba.recheckMin can't be negative (is ${n.recheckMin})")
         if (n.predictMinutes < 0) add("nba.predictMinutes can't be negative (is ${n.predictMinutes})")
         if (!n.minCarbsG.isFinite() || n.minCarbsG < 0) add("nba.minCarbsG can't be negative (is ${show(n.minCarbsG)})")
+        val f = p.forecast
+        if (!f.carbAbsorptionMin.isFinite() || f.carbAbsorptionMin <= 0) add("forecast.carbAbsorptionMin must be above 0 (is ${show(f.carbAbsorptionMin)})")
+        if (!f.carbDelayMin.isFinite() || f.carbDelayMin < 0) add("forecast.carbDelayMin can't be negative (is ${show(f.carbDelayMin)})")
+        if (!f.lookbackMin.isFinite() || f.lookbackMin < 5) add("forecast.lookbackMin must be at least 5 (is ${show(f.lookbackMin)})")
+        if (!f.carryMin.isFinite() || f.carryMin < 0) add("forecast.carryMin can't be negative (is ${show(f.carryMin)})")
+        if (f.minReadings < 2) add("forecast.minReadings must be at least 2 (is ${f.minReadings})")
+        if (!f.maxReadingAgeMin.isFinite() || f.maxReadingAgeMin <= 0) add("forecast.maxReadingAgeMin must be above 0 (is ${show(f.maxReadingAgeMin)})")
+        val a = p.alerts
+        finite("alerts.correctionAboveMgDl", a.correctionAboveMgDl)
+        finite("alerts.carbsProjectedBelowMgDl", a.carbsProjectedBelowMgDl)
+        if (a.correctionMinUnits < 0) add("alerts.correctionMinUnits can't be negative (is ${a.correctionMinUnits})")
+        if (a.correctionMinMinutesSinceDose < 0) add("alerts.correctionMinMinutesSinceDose can't be negative (is ${a.correctionMinMinutesSinceDose})")
+        if (a.repeatMin < 0) add("alerts.repeatMin can't be negative (is ${a.repeatMin})")
 
         val ids = p.factors.map { it.id }
         ids.groupingBy { it }.eachCount().filter { it.value > 1 }.keys.forEach { add("factor id $it is used more than once") }

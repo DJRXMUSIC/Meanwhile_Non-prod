@@ -50,8 +50,10 @@ data class Turn(
     val session: InputSession? = null,
     val error: String? = null,
     val finishedAt: Long? = null,
+    /** 2.0: a notification the app sent by itself (advice), shown in the conversation as it arrives. */
+    val notice: Boolean = false,
 ) {
-    val working: Boolean get() = session == null && error == null
+    val working: Boolean get() = !notice && session == null && error == null
 }
 
 class MainViewModel(private val c: AppContainer) : ViewModel() {
@@ -84,6 +86,13 @@ class MainViewModel(private val c: AppContainer) : ViewModel() {
             history = runCatching { c.conversation.transcriptSince(openedAt - HISTORY_MS) }.getOrDefault(emptyList())
                 .filter { it.recordedAt < openedAt }
                 .takeLast(HISTORY_ITEMS)
+        }
+        viewModelScope.launch {
+            c.db.conversation().notificationsSince(openedAt).collect { rows ->
+                rows.filter { r -> turns.none { it.id == "n-${r.id}" } }.forEach { r ->
+                    turns += Turn("n-${r.id}", r.text, "notification", r.recordedAt, finishedAt = r.recordedAt, notice = true)
+                }
+            }
         }
     }
 

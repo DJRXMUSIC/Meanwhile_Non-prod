@@ -22,6 +22,10 @@ data class Profile(
     val learning: LearningSettings = LearningSettings(),
     /** How the Next Best Action is chosen from the dose math: insulin, carbs, or nothing (1.4). */
     val nba: NbaSettings = NbaSettings(),
+    /** What the CGM shows that the records don't explain, and carbs still absorbing (2.0). */
+    val forecast: ForecastSettings = ForecastSettings(),
+    /** When the app speaks up on its own with a notification (2.0). */
+    val alerts: AlertSettings = AlertSettings(),
 ) {
     fun factor(id: String): FactorDefinition? = factors.firstOrNull { it.id == id }
 }
@@ -84,6 +88,50 @@ data class NbaSettings(
     val predictMinutes: Int = 20,
     /** Carb suggestions below this (g) are rounding noise and treated as on target. */
     val minCarbsG: Double = 5.0,
+)
+
+/**
+ * The forecast (2.0). Carbs from logged meals absorb linearly after [carbDelayMin] over
+ * [carbAbsorptionMin]; what is still to come counts as units the dose has to cover. The CGM's slope
+ * over the last [lookbackMin] is compared with what logged insulin and carbs should have done; the
+ * difference — food that wasn't logged, exercise, a site problem — is assumed to carry on and fade
+ * to zero over [carryMin] (retrospective correction, as in Loop). Both are terms in the dose math.
+ */
+@Serializable
+data class ForecastSettings(
+    val enabled: Boolean = true,
+    val carbAbsorptionMin: Double = 180.0,
+    val carbDelayMin: Double = 10.0,
+    val lookbackMin: Double = 30.0,
+    /** Danny's history (2026-06 → 10): carrying the unexplained change 120 min halved false lows. */
+    val carryMin: Double = 120.0,
+    /** Fewest CGM readings in the lookback for the comparison to count. */
+    val minReadings: Int = 4,
+    /** Newest reading older than this (min) → no unexplained term. */
+    val maxReadingAgeMin: Double = 15.0,
+)
+
+/**
+ * Notifications the app sends by itself (2.0, Danny: "send a notification to recommend a change,
+ * like correction dose"). Every alert names the action the dose math gives right now.
+ */
+@Serializable
+data class AlertSettings(
+    val enabled: Boolean = true,
+    /** A low now or coming within nba.predictMinutes. */
+    val lows: Boolean = true,
+    /** Correction suggestions when BG is at or above [correctionAboveMgDl]. */
+    val corrections: Boolean = true,
+    val correctionAboveMgDl: Double = 180.0,
+    /** Fewest units worth a correction notification. */
+    val correctionMinUnits: Int = 1,
+    /** Minutes since the last rapid dose before suggesting a correction. */
+    val correctionMinMinutesSinceDose: Int = 60,
+    /** "Eat carbs" when the forecast lands below this while BG is falling. */
+    val carbs: Boolean = true,
+    val carbsProjectedBelowMgDl: Double = 70.0,
+    /** Minutes before the same kind of alert repeats while it still applies. */
+    val repeatMin: Int = 30,
 )
 
 /** Exponential insulin activity model (spec §6). */

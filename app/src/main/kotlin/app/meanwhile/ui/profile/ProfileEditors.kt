@@ -60,6 +60,21 @@ private val SETTINGS = listOf(
         "split.minFatG" to "Fat ≥ (g)", "split.minProteinG" to "Protein ≥ (g)", "split.minCarbsG" to "Carbs ≥ (g)",
         "split.firstFraction" to "First injection fraction", "split.secondAfterMin" to "Second after (min)",
     ),
+    "Next best action" to listOf(
+        "nba.lowBelowMgDl" to "Low below (mg/dL)", "nba.lowTreatCarbsG" to "Fast carbs for a low (g)",
+        "nba.recheckMin" to "Recheck after a low (min)", "nba.predictMinutes" to "Look ahead for a low (min)",
+        "nba.minCarbsG" to "Smallest carb suggestion (g)",
+    ),
+    "Forecast" to listOf(
+        "forecast.carbAbsorptionMin" to "Carbs absorb over (min)", "forecast.carbDelayMin" to "Carbs start after (min)",
+        "forecast.lookbackMin" to "Compare the CGM over the last (min)", "forecast.carryMin" to "Unexplained change fades over (min)",
+        "forecast.minReadings" to "Fewest readings to compare", "forecast.maxReadingAgeMin" to "Newest reading at most (min old)",
+    ),
+    "Notifications" to listOf(
+        "alerts.correctionAboveMgDl" to "Suggest a correction at BG ≥", "alerts.correctionMinUnits" to "… of at least (u)",
+        "alerts.correctionMinMinutesSinceDose" to "… once the last dose is (min) old",
+        "alerts.carbsProjectedBelowMgDl" to "Suggest carbs when landing below", "alerts.repeatMin" to "Repeat the same alert after (min)",
+    ),
     "Daily reset" to listOf("resetHour" to "Reset hour (0–23)"),
     "Learning" to listOf(
         "learning.rate" to "Step size (0–1 of the gap to the evidence)", "learning.minLessons" to "Lessons before a step",

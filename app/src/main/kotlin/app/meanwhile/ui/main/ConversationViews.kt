@@ -59,6 +59,13 @@ import kotlin.math.roundToInt
 /** One message: what Danny said, what the app is doing about it, and the answer. */
 @Composable
 fun TurnView(turn: Turn, profile: Profile, vm: MainViewModel) {
+    if (turn.notice) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            AppBubble("🔔 ${turn.text}", at = turn.at)
+            androidx.compose.material3.TextButton(onClick = { vm.send("what should I do?") }) { Text("What should I do?") }
+        }
+        return
+    }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         UserBubble(turn.text, turn.via, turn.at)
         StepsView(turn, vm)
@@ -122,6 +129,7 @@ fun HistoryLine(e: ConversationLogEntity) {
         ConversationLog.KIND_MESSAGE -> UserBubble(e.text, if (e.details.contains("\"via\":\"voice\"")) "voice" else "text", e.recordedAt, muted = true)
         ConversationLog.KIND_REPLY -> AppBubble(e.text, muted = true, at = e.recordedAt)
         ConversationLog.KIND_ERROR -> AppBubble(e.text, isError = true, muted = true, at = e.recordedAt)
+        ConversationLog.KIND_NOTIFICATION -> AppBubble("🔔 ${e.text}", muted = true, at = e.recordedAt)
         else -> Text(
             "• ${e.text}", style = MaterialTheme.typography.labelSmall, fontStyle = FontStyle.Italic,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

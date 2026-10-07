@@ -175,6 +175,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            AdviceSection()
         }
 
         appSettings?.let { st ->
@@ -312,5 +313,49 @@ fun SettingsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+/**
+ * 2.0: the app's own suggestions (lows, carbs, corrections) — profile values, so each switch saves a
+ * new profile version like any other edit. The numbers are in Profile → Edit settings → Notifications.
+ */
+@Composable
+private fun AdviceSection() {
+    val c = LocalAppContainer.current
+    val scope = rememberSafeScope()
+    val state by c.profiles.current.collectAsStateWithLifecycle(initialValue = null)
+    val p = state?.profile ?: return
+    fun set(path: String, on: Boolean) = scope.launch {
+        val current = c.profiles.current().profile
+        val old = app.meanwhile.domain.profile.ProfilePatch.get(current, path) ?: return@launch
+        val change = app.meanwhile.domain.profile.ProfileChange(path, old, kotlinx.serialization.json.JsonPrimitive(on))
+        app.meanwhile.domain.profile.ProfilePatch.apply(current, listOf(change)).onSuccess { updated ->
+            c.profiles.saveVersion(
+                updated, app.meanwhile.data.profile.ProfileSource.MANUAL, app.meanwhile.data.profile.ProfileStatus.ACCEPTED,
+                "Manual: $path ${if (on) "on" else "off"}", changes = listOf(change),
+            )
+        }
+    }
+    SectionCard("Suggestions on their own") {
+        Text(
+            "After each CGM reading the app works out what to do right now and, when it matters, sends a notification. " +
+                "It never logs anything — you still say what you did.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        listOf(
+            Triple("alerts.enabled", p.alerts.enabled, "Send suggestions"),
+            Triple("alerts.lows", p.alerts.lows, "Lows, now or within ${p.nba.predictMinutes} min"),
+            Triple("alerts.carbs", p.alerts.carbs, "Carbs when insulin on board takes a falling BG below ${p.alerts.carbsProjectedBelowMgDl.toInt()}"),
+            Triple(
+                "alerts.corrections", p.alerts.corrections,
+                "Corrections at BG ≥ ${p.alerts.correctionAboveMgDl.toInt()}, ${p.alerts.correctionMinMinutesSinceDose} min after the last dose",
+            ),
+        ).forEachIndexed { i, (path, on, label) ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Switch(checked = on, enabled = i == 0 || p.alerts.enabled, onCheckedChange = { set(path, it) })
+                Text(label)
+            }
+        }
     }
 }

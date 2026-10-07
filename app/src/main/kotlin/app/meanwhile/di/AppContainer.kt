@@ -21,6 +21,7 @@ import app.meanwhile.data.ai.ProposalReview
 import app.meanwhile.data.net.NetworkMonitor
 import app.meanwhile.data.dose.DoseContextBuilder
 import app.meanwhile.domain.dose.DoseEngine
+import app.meanwhile.data.input.AdviceService
 import app.meanwhile.data.input.AiHooks
 import app.meanwhile.data.input.ConversationLog
 import app.meanwhile.data.input.FactorUpdater
@@ -40,6 +41,8 @@ import app.meanwhile.data.stats.StatsRepository
 import app.meanwhile.data.sync.SyncEngine
 import app.meanwhile.data.sync.SyncWorker
 import app.meanwhile.service.CgmService
+import app.meanwhile.notify.Notifications
+import app.meanwhile.ui.nav.Routes
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -128,6 +131,14 @@ class AppContainer(val app: Application) {
     /** Online AI steps when Supabase is configured; the offline path never needs them. */
     val aiHooks: AiHooks get() = if (supabase != null) aiHooksImpl else object : AiHooks {}
     val conversation: ConversationLog by lazy { ConversationLog(db, records, ::requestSync) }
+    val advice: AdviceService by lazy {
+        AdviceService(nba, settings, conversation) { alert ->
+            Notifications.post(
+                app, Notifications.ID_ADVICE_BASE + alert.kind.ordinal, Notifications.CHANNEL_ADVICE,
+                alert.title, alert.text, destination = Routes.MAIN,
+            )
+        }
+    }
     val inputs: InputProcessor by lazy { InputProcessor(db, records, profiles, factorUpdater, nba, ::requestSync, conversation) { aiHooks } }
 
     val learning: LearningEngine by lazy { LearningEngine(app, db, records, profiles, ai, settings, ::requestSync) }
@@ -196,6 +207,10 @@ class AppContainer(val app: Application) {
             combine(network.online, auth.state) { online, a -> online && a is AuthState.SignedIn && !a.offline }
                 .distinctUntilChanged()
                 .collect { ready -> if (ready) runCatching { aiQueue.runPending() } }
+        }
+        // 2.0: every new CGM reading → is there something Danny should do now? (lows, carbs, corrections)
+        appScope.launch {
+            cgm.latest.map { it?.timestamp }.distinctUntilChanged().collect { at -> if (at != null) advice.check() }
         }
         // A (re)sign-in pulls everything missing locally — this is the restore path.
         appScope.launch {
