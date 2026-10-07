@@ -95,9 +95,20 @@ jobs:
       - name: Decode signing keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            # Pasted secrets often pick up spaces or line breaks; base64 has neither.
+            if ! printf '%s' "$KEYSTORE_BASE64" | tr -d ' \t\r\n' | base64 -d > "$RUNNER_TEMP/release.jks" 2>/dev/null; then
+              echo "::error::KEYSTORE_BASE64 isn't the signing key — paste the whole VALUE line from the paste sheet again (docs/INSTALL.md §2)"
+              echo "- :x: **Signing:** \`KEYSTORE_BASE64\` couldn't be read — paste it again from the sheet" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storetype PKCS12 -storepass "$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d ' \t\r\n')" > /dev/null 2>&1; then
+              echo "::error::KEYSTORE_PASSWORD doesn't unlock the signing key — paste it again from the sheet (docs/INSTALL.md §2)"
+              echo "- :x: **Signing:** \`KEYSTORE_PASSWORD\` doesn't match the key — paste it again from the sheet" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
             echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "- :white_check_mark: **Signing:** Releases publish automatically" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -108,11 +119,12 @@ jobs:
           # secrets are only a fallback. Alias and key password default to the generated keystore's.
           URL_SECRET: ${{ secrets.SUPABASE_URL }}
           ANON_KEY_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_PASSWORD_RAW: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS_SECRET: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD_SECRET: ${{ secrets.KEY_PASSWORD }}
         run: |
           export SUPABASE_URL="${SUPABASE_URL:-$URL_SECRET}" SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-$ANON_KEY_SECRET}"
+          export KEYSTORE_PASSWORD="$(printf '%s' "$KEYSTORE_PASSWORD_RAW" | tr -d ' \t\r\n')"
           export KEY_ALIAS="${KEY_ALIAS_SECRET:-meanwhile}" KEY_PASSWORD="${KEY_PASSWORD_SECRET:-$KEYSTORE_PASSWORD}"
           ./gradlew :app:assembleRelease --console=plain
 
